@@ -9,9 +9,14 @@ Checks, in order:
      the final event.
   5. Every event number cited in outcome_evidence exists in the trace.
   6. The seal covers the final event.
+  7. Only if the record is intact: the journey obeyed the mandate. So far
+     one rule is checked, human confirmation (see confirmation_problems).
 
-Signature checking is a Phase 2 job. Mandate rule checks (price limits,
-missing human confirmation and so on) are a Phase 3 job.
+Checks 1-6 ask "is this record genuine?". Check 7 asks "did the agent do
+what it was allowed to?". The report says which kind of failure it found.
+
+Signature checking is a Phase 2 job. The other mandate rules (price limits,
+scope, expiry and so on) arrive with the Phase 3 verifier.
 
 Usage: python scripts/validate.py <name>.mandate.json <name>.trace.json
 Exit codes: 0 pass, 1 fail, 2 bad usage.
@@ -109,8 +114,40 @@ def evidence_problems(trace):
     return problems
 
 
-def fail(problems):
-    print("FAIL")
+def confirmation_problems(mandate, trace):
+    """Every binding action needs its own live yes from the principal, given
+    after the agent chose what to buy.
+
+    Applies when the mandate says human_confirmation is "always". A yes only
+    counts if it comes from the principal with decision "approved", and it
+    is used up by one action_executed. A new selection_made also clears it,
+    because a yes to one choice is not a yes to a different one.
+
+    "above_limits" needs the price and scope rules, so it waits for Phase 3.
+    """
+    if mandate["human_confirmation"] != "always":
+        return []
+    problems = []
+    approval = None
+    for ev in trace["events"]:
+        kind, payload = ev["type"], ev["payload"]
+        if kind == "selection_made":
+            approval = None
+        elif kind == "human_confirmation" and ev["actor"] == "principal" and payload["decision"] == "approved":
+            approval = ev["seq"]
+        elif kind == "action_executed":
+            if approval is None:
+                amount = payload["amount_committed"]
+                problems.append(
+                    f"event {ev['seq']} (action_executed): the agent committed {amount['amount']} {amount['currency']} "
+                    f"without an approved human_confirmation from the principal, but the mandate requires one every time"
+                )
+            approval = None
+    return problems
+
+
+def fail(problems, headline=""):
+    print(f"FAIL  {headline}" if headline else "FAIL")
     for p in problems:
         print("  -", p)
     return 1
@@ -127,16 +164,24 @@ def main(argv):
     except Unreadable as e:
         return fail([str(e)])
 
+    name = Path(trace_path).name
+
     problems = [f"mandate {e}" for e in schema_errors(mandate, "mandate.schema.json")]
     problems += [f"trace {e}" for e in schema_errors(trace, "trace.schema.json")]
     if problems:
-        return fail(problems)
+        return fail(problems, f"{name}: the record is malformed")
 
     problems = chain_problems(mandate, trace) + time_problems(trace) + evidence_problems(trace)
     if problems:
-        return fail(problems)
+        return fail(problems, f"{name}: the record is broken or has been tampered with")
 
-    print(f"PASS  {Path(trace_path).name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event")
+    problems = confirmation_problems(mandate, trace)
+    if problems:
+        return fail(problems, f"{name}: the record is intact, but the agent broke its mandate")
+
+    setting = mandate["human_confirmation"]
+    confirmation = "confirmation rule met" if setting == "always" else f"confirmation rule not checked for '{setting}' yet"
+    print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {confirmation}")
     return 0
 
 

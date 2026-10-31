@@ -1,0 +1,77 @@
+{
+  "spec_version": "0.1",
+  "mandate_id": "mdt_Wc5Jp1Ns8Gd4",
+  "principal": {
+    "principal_ref": "prn_a91f0c3e",
+    "type": "consumer",
+    "jurisdiction": "GB",
+    "support_needs_declared": false
+  },
+  "agent": {
+    "agent_id": "agt_homehelper_01",
+    "operator": "Example Agent Ltd",
+    "software": {
+      "name": "home-helper",
+      "version": "0.3.1",
+      "model": "example-model"
+    },
+    "public_key_ref": "https://agent.example/.well-known/jwks.json#k1"
+  },
+  "scope": {
+    "product_classes": [
+      "home_insurance"
+    ],
+    "allowed_actions": [
+      "quote",
+      "compare",
+      "renew",
+      "switch"
+    ]
+  },
+  "limits": {
+    "max_price": {
+      "amount": "350.00",
+      "currency": "GBP"
+    },
+    "max_price_increase_pct": 10,
+    "max_term_months": 12,
+    "max_transactions": 1,
+    "requirements": [
+      {
+        "id": "req_excess",
+        "text": "Excess no more than 250 GBP",
+        "machine_check": {
+          "field": "excess",
+          "op": "lte",
+          "value": "250.00"
+        }
+      },
+      {
+        "id": "req_accidental",
+        "text": "Must include accidental damage cover",
+        "machine_check": {
+          "field": "cover",
+          "op": "includes",
+          "value": "accidental_damage"
+        }
+      }
+    ]
+  },
+  "human_confirmation": "always",
+  "consent": {
+    "granted_at": "2026-10-01T09:00:00Z",
+    "method": "wallet_passkey",
+    "terms_hash": "sha256:397564bdfbf380b75f07b1f8c30e40ae525efab4ffeb13975f0938552d3e9e89",
+    "language": "en-GB"
+  },
+  "validity": {
+    "not_before": "2026-10-01T09:00:00Z",
+    "expires_at": "2027-01-31T23:59:59Z",
+    "revocation_url": "https://wallet.example/mandates/mdt_Wc5Jp1Ns8Gd4/status"
+  },
+  "signature": {
+    "alg": "ES256",
+    "key_id": "prn_a91f0c3e#wallet",
+    "value": "UNSIGNED-EXAMPLE"
+  }
+}

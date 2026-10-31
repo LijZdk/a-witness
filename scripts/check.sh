@@ -29,6 +29,11 @@ echo "ok      examples match the generator"
 echo "== the worked example passes"
 "$PY" scripts/validate.py "$M" "$T"
 
+echo "== the no-confirmation example fails, as a mandate breach rather than a broken record"
+expect_fail "purchase without the principal's yes is flagged" \
+  "the record is intact, but the agent broke its mandate" \
+  examples/home-insurance-no-confirmation.mandate.json examples/home-insurance-no-confirmation.trace.json
+
 echo "== broken inputs fail cleanly"
 sed 's/"298.00"/"198.00"/' "$T" > "$TMP/tampered.json"
 expect_fail "edited price is detected" "event 2: hash does not match" "$M" "$TMP/tampered.json"
