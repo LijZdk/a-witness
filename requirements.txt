@@ -1,0 +1,4 @@
+# format-nongpl turns on checking of "date-time" and "uri" formats. Without it
+# jsonschema silently accepts any string there. The plain "format" extra pulls
+# in a GPL dependency, so it is avoided.
+jsonschema[format-nongpl]>=4.18,<5

@@ -1,0 +1,329 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://a-witness.dev/schemas/0.1/trace.schema.json",
+  "title": "a-witness Trace",
+  "description": "A tamper-evident record of one agent-led journey for a regulated financial product: what was asked, what was shown, what was chosen and why. Events form a hash chain; the whole trace is sealed with a signature. Draft v0.1.",
+  "type": "object",
+  "required": ["spec_version", "trace_id", "mandate_ref", "journey", "events", "seal"],
+  "additionalProperties": false,
+  "properties": {
+    "spec_version": { "const": "0.1" },
+    "trace_id": { "type": "string", "pattern": "^trc_[A-Za-z0-9]{12,64}$" },
+    "mandate_ref": {
+      "type": "object",
+      "description": "Points at the mandate this journey ran under.",
+      "required": ["mandate_id", "mandate_hash"],
+      "additionalProperties": false,
+      "properties": {
+        "mandate_id": { "type": "string" },
+        "mandate_hash": { "$ref": "#/$defs/hash" }
+      }
+    },
+    "journey": {
+      "type": "object",
+      "required": ["action", "product_class", "started_at"],
+      "additionalProperties": false,
+      "properties": {
+        "action": { "$ref": "mandate.schema.json#/$defs/action" },
+        "product_class": { "$ref": "mandate.schema.json#/$defs/product_class" },
+        "started_at": { "type": "string", "format": "date-time" },
+        "ended_at": { "type": "string", "format": "date-time" },
+        "status": { "enum": ["completed", "abandoned", "escalated_to_human", "failed"] },
+        "transport": {
+          "enum": ["mcp", "a2a", "ap2", "ucp", "acp", "rest", "other"],
+          "description": "Which protocol the journey ran over. a-witness rides on top of these, it does not replace them."
+        }
+      }
+    },
+    "events": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/event" }
+    },
+    "outcome_evidence": {
+      "type": "object",
+      "description": "Optional summary pointing at the events that evidence each of the four Consumer Duty outcomes. Produced by the verifier or the provider, not trusted on its own.",
+      "additionalProperties": false,
+      "properties": {
+        "products_and_services": { "$ref": "#/$defs/evidence_ref" },
+        "price_and_value": { "$ref": "#/$defs/evidence_ref" },
+        "consumer_understanding": { "$ref": "#/$defs/evidence_ref" },
+        "consumer_support": { "$ref": "#/$defs/evidence_ref" }
+      }
+    },
+    "seal": {
+      "type": "object",
+      "description": "Closes the trace. Signs the hash of the final event so nothing can be added, removed or reordered afterwards.",
+      "required": ["final_event_hash", "sealed_at", "signatures"],
+      "additionalProperties": false,
+      "properties": {
+        "final_event_hash": { "$ref": "#/$defs/hash" },
+        "sealed_at": { "type": "string", "format": "date-time" },
+        "signatures": {
+          "type": "array",
+          "minItems": 1,
+          "description": "At least the agent. Ideally the provider too, so both sides hold the same record.",
+          "items": {
+            "type": "object",
+            "required": ["signer", "alg", "key_id", "value"],
+            "additionalProperties": false,
+            "properties": {
+              "signer": { "enum": ["agent", "provider", "principal", "witness_service"] },
+              "alg": { "enum": ["ES256", "EdDSA"] },
+              "key_id": { "type": "string" },
+              "value": { "type": "string" }
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "hash": { "type": "string", "pattern": "^sha256:[a-f0-9]{64}$" },
+    "money": {
+      "type": "object",
+      "required": ["amount", "currency"],
+      "additionalProperties": false,
+      "properties": {
+        "amount": { "type": "string", "pattern": "^[0-9]+(\\.[0-9]{1,2})?$" },
+        "currency": { "type": "string", "pattern": "^[A-Z]{3}$" }
+      }
+    },
+    "evidence_ref": {
+      "type": "object",
+      "required": ["event_seqs"],
+      "additionalProperties": false,
+      "properties": {
+        "event_seqs": { "type": "array", "items": { "type": "integer", "minimum": 0 } },
+        "note": { "type": "string" }
+      }
+    },
+    "event": {
+      "type": "object",
+      "required": ["seq", "at", "type", "actor", "payload", "prev_hash", "hash"],
+      "additionalProperties": false,
+      "properties": {
+        "seq": { "type": "integer", "minimum": 0 },
+        "at": { "type": "string", "format": "date-time" },
+        "type": {
+          "enum": [
+            "intent_captured",
+            "quote_requested",
+            "quote_received",
+            "disclosure_presented",
+            "alternatives_considered",
+            "requirement_check",
+            "selection_made",
+            "human_confirmation",
+            "action_executed",
+            "post_sale_notice",
+            "escalation",
+            "error"
+          ]
+        },
+        "actor": { "enum": ["agent", "provider", "principal", "system"] },
+        "payload": { "type": "object" },
+        "prev_hash": {
+          "description": "Hash of the previous event. The first event uses the mandate hash, tying the chain to the mandate.",
+          "$ref": "#/$defs/hash"
+        },
+        "hash": {
+          "description": "sha256 over canonical JSON (RFC 8785) of this event without the 'hash' field.",
+          "$ref": "#/$defs/hash"
+        }
+      },
+      "allOf": [
+        {
+          "if": { "properties": { "type": { "const": "intent_captured" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_intent" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "quote_requested" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_quote_request" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "quote_received" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_quote" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "disclosure_presented" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_disclosure" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "alternatives_considered" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_alternatives" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "requirement_check" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_requirement_check" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "selection_made" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_selection" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "human_confirmation" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_confirmation" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "action_executed" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_executed" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "post_sale_notice" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_post_sale" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "escalation" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_escalation" } } }
+        },
+        {
+          "if": { "properties": { "type": { "const": "error" } } },
+          "then": { "properties": { "payload": { "$ref": "#/$defs/p_error" } } }
+        }
+      ]
+    },
+    "p_quote_request": {
+      "type": "object",
+      "required": ["provider_id"],
+      "properties": {
+        "provider_id": { "type": "string" },
+        "product_id": { "type": "string", "description": "If the agent asked for a specific product rather than any matching one." },
+        "request_hash": { "$ref": "#/$defs/hash", "description": "Hash of the data sent to the provider (which may include personal details), so the request is evidenced without being stored." }
+      }
+    },
+    "p_intent": {
+      "type": "object",
+      "required": ["summary"],
+      "properties": {
+        "summary": { "type": "string", "description": "What the principal asked for, in their words or a faithful summary." },
+        "utterance_hash": { "$ref": "#/$defs/hash", "description": "Hash of the raw instruction, so the text itself need not be stored." }
+      }
+    },
+    "p_quote": {
+      "type": "object",
+      "required": ["quote_id", "provider_id", "product_id", "price", "term_months"],
+      "properties": {
+        "quote_id": { "type": "string" },
+        "provider_id": { "type": "string" },
+        "provider_frn": { "type": "string", "description": "FCA Firm Reference Number, if the provider has one." },
+        "product_id": { "type": "string" },
+        "price": { "$ref": "#/$defs/money" },
+        "previous_price": { "$ref": "#/$defs/money" },
+        "term_months": { "type": "integer", "minimum": 1 },
+        "key_features": { "type": "object", "description": "Structured features used for requirement checks, e.g. {\"excess\": \"250.00\"}." },
+        "valid_until": { "type": "string", "format": "date-time" }
+      }
+    },
+    "p_disclosure": {
+      "type": "object",
+      "required": ["document_kind", "document_hash", "presented_to"],
+      "properties": {
+        "document_kind": { "enum": ["ipid", "key_facts", "terms", "summary_box", "fee_schedule", "cancellation_rights", "other"] },
+        "document_hash": { "$ref": "#/$defs/hash" },
+        "document_url": { "type": "string", "format": "uri" },
+        "presented_to": { "enum": ["agent_only", "principal"] },
+        "plain_summary": { "type": "string", "description": "What the agent told the principal about this document, if anything." }
+      }
+    },
+    "p_alternatives": {
+      "type": "object",
+      "required": ["options"],
+      "properties": {
+        "options": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "object",
+            "required": ["quote_id", "considered"],
+            "properties": {
+              "quote_id": { "type": "string" },
+              "considered": { "type": "boolean" },
+              "excluded_reason": { "type": "string" }
+            }
+          }
+        },
+        "market_coverage_note": { "type": "string", "description": "Honest statement of how much of the market the agent looked at." }
+      }
+    },
+    "p_requirement_check": {
+      "type": "object",
+      "required": ["quote_id", "results"],
+      "properties": {
+        "quote_id": { "type": "string" },
+        "results": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["requirement_id", "passed"],
+            "properties": {
+              "requirement_id": { "type": "string" },
+              "passed": { "type": "boolean" },
+              "detail": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "p_selection": {
+      "type": "object",
+      "required": ["quote_id", "rationale"],
+      "properties": {
+        "quote_id": { "type": "string" },
+        "rationale": { "type": "string", "description": "Why the agent picked this one, in plain language." },
+        "within_mandate_limits": { "type": "boolean" }
+      }
+    },
+    "p_confirmation": {
+      "type": "object",
+      "required": ["method", "decision"],
+      "properties": {
+        "method": { "enum": ["in_app_tap", "passkey", "voice", "message_reply"] },
+        "decision": { "enum": ["approved", "declined", "modified"] },
+        "shown_summary_hash": { "$ref": "#/$defs/hash", "description": "Hash of the exact confirmation screen or message the principal saw." }
+      }
+    },
+    "p_executed": {
+      "type": "object",
+      "required": ["quote_id", "provider_reference", "amount_committed"],
+      "properties": {
+        "quote_id": { "type": "string" },
+        "provider_reference": { "type": "string", "description": "Policy or account reference from the provider." },
+        "amount_committed": { "$ref": "#/$defs/money" },
+        "payment_mandate_ref": { "type": "string", "description": "Link to an AP2 payment mandate or similar, if payment was taken." }
+      }
+    },
+    "p_post_sale": {
+      "type": "object",
+      "required": ["notice_kind"],
+      "properties": {
+        "notice_kind": { "enum": ["cancellation_window", "documents_sent", "renewal_reminder", "support_contact"] },
+        "detail": { "type": "string" },
+        "deadline": { "type": "string", "format": "date-time" }
+      }
+    },
+    "p_escalation": {
+      "type": "object",
+      "required": ["reason", "handed_to"],
+      "properties": {
+        "reason": {
+          "enum": ["outside_mandate", "needs_confirmation", "support_needs", "provider_referral", "agent_uncertain", "other"],
+          "description": "Why the agent stopped and handed over instead of carrying on."
+        },
+        "handed_to": { "enum": ["principal", "provider_human", "agent_operator"] },
+        "detail": { "type": "string", "description": "Plain-language explanation for a reviewer." },
+        "related_quote_id": { "type": "string" }
+      }
+    },
+    "p_error": {
+      "type": "object",
+      "required": ["code"],
+      "properties": {
+        "code": { "type": "string", "description": "Short machine-readable error code, e.g. 'provider_timeout'." },
+        "message": { "type": "string" },
+        "retryable": { "type": "boolean" },
+        "related_quote_id": { "type": "string" }
+      }
+    }
+  }
+}

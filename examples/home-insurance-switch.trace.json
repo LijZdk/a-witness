@@ -1,0 +1,304 @@
+{
+  "spec_version": "0.1",
+  "trace_id": "trc_Rn4Vb8Ty2Mk6",
+  "mandate_ref": {
+    "mandate_id": "mdt_7Hq2Lk9Xw3Pz",
+    "mandate_hash": "sha256:e09af381213e66b471db765252b053f2b45858a1bea1d1ea05fe55749cc7cdd1"
+  },
+  "journey": {
+    "action": "switch",
+    "product_class": "home_insurance",
+    "started_at": "2026-10-02T08:00:00Z",
+    "ended_at": "2026-10-02T08:14:25Z",
+    "status": "completed",
+    "transport": "mcp"
+  },
+  "events": [
+    {
+      "seq": 0,
+      "at": "2026-10-02T08:00:00Z",
+      "type": "intent_captured",
+      "actor": "agent",
+      "payload": {
+        "summary": "Renewal came in at 389 GBP, up from 312 GBP. Check if I can do better, same cover.",
+        "utterance_hash": "sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff"
+      },
+      "prev_hash": "sha256:e09af381213e66b471db765252b053f2b45858a1bea1d1ea05fe55749cc7cdd1",
+      "hash": "sha256:046a7bada21265f883c77ebc519eb7de057160aa942942f6f6092ae313afcef7"
+    },
+    {
+      "seq": 1,
+      "at": "2026-10-02T08:00:05Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_incumbent",
+        "provider_id": "prov_oldco",
+        "provider_frn": "000001",
+        "product_id": "home_std",
+        "price": {
+          "amount": "389.00",
+          "currency": "GBP"
+        },
+        "previous_price": {
+          "amount": "312.00",
+          "currency": "GBP"
+        },
+        "term_months": 12,
+        "key_features": {
+          "excess": "250.00",
+          "cover": [
+            "buildings",
+            "contents",
+            "accidental_damage"
+          ]
+        }
+      },
+      "prev_hash": "sha256:046a7bada21265f883c77ebc519eb7de057160aa942942f6f6092ae313afcef7",
+      "hash": "sha256:cf32a9ec2cf39bfc6873c6ae0a4d23b7fae870fd7124ed3025273d8ea67e0548"
+    },
+    {
+      "seq": 2,
+      "at": "2026-10-02T08:01:10Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_newco",
+        "provider_id": "prov_newco",
+        "provider_frn": "000002",
+        "product_id": "home_plus",
+        "price": {
+          "amount": "298.00",
+          "currency": "GBP"
+        },
+        "term_months": 12,
+        "key_features": {
+          "excess": "200.00",
+          "cover": [
+            "buildings",
+            "contents",
+            "accidental_damage"
+          ]
+        }
+      },
+      "prev_hash": "sha256:cf32a9ec2cf39bfc6873c6ae0a4d23b7fae870fd7124ed3025273d8ea67e0548",
+      "hash": "sha256:dda70e3f5c8b89eeda69104dd1028c94af3aa80026ee08ff87cf4fd2a34a2faa"
+    },
+    {
+      "seq": 3,
+      "at": "2026-10-02T08:01:12Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_cheapco",
+        "provider_id": "prov_cheapco",
+        "provider_frn": "000003",
+        "product_id": "home_basic",
+        "price": {
+          "amount": "241.00",
+          "currency": "GBP"
+        },
+        "term_months": 12,
+        "key_features": {
+          "excess": "500.00",
+          "cover": [
+            "buildings",
+            "contents"
+          ]
+        }
+      },
+      "prev_hash": "sha256:dda70e3f5c8b89eeda69104dd1028c94af3aa80026ee08ff87cf4fd2a34a2faa",
+      "hash": "sha256:58575a84d64927985743b01863174763952a223c148238987778326ebd22d1cb"
+    },
+    {
+      "seq": 4,
+      "at": "2026-10-02T08:01:30Z",
+      "type": "requirement_check",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_newco",
+        "results": [
+          {
+            "requirement_id": "req_excess",
+            "passed": true,
+            "detail": "200.00 <= 250.00"
+          },
+          {
+            "requirement_id": "req_accidental",
+            "passed": true
+          }
+        ]
+      },
+      "prev_hash": "sha256:58575a84d64927985743b01863174763952a223c148238987778326ebd22d1cb",
+      "hash": "sha256:bb8b1e2ab549e73e7a0df9c668f6729187132e7afed72df40bac3dfe0fbe1ab9"
+    },
+    {
+      "seq": 5,
+      "at": "2026-10-02T08:01:31Z",
+      "type": "requirement_check",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_cheapco",
+        "results": [
+          {
+            "requirement_id": "req_excess",
+            "passed": false,
+            "detail": "500.00 > 250.00"
+          },
+          {
+            "requirement_id": "req_accidental",
+            "passed": false
+          }
+        ]
+      },
+      "prev_hash": "sha256:bb8b1e2ab549e73e7a0df9c668f6729187132e7afed72df40bac3dfe0fbe1ab9",
+      "hash": "sha256:80ab8f5ff64d44e2cac452f2a832c1f5bd5375711decb196a658a0dc02062134"
+    },
+    {
+      "seq": 6,
+      "at": "2026-10-02T08:01:40Z",
+      "type": "alternatives_considered",
+      "actor": "agent",
+      "payload": {
+        "options": [
+          {
+            "quote_id": "q_incumbent",
+            "considered": true,
+            "excluded_reason": "Price rise 24.7% exceeds mandate limit of 10%"
+          },
+          {
+            "quote_id": "q_newco",
+            "considered": true
+          },
+          {
+            "quote_id": "q_cheapco",
+            "considered": true,
+            "excluded_reason": "Fails excess and accidental damage requirements"
+          }
+        ],
+        "market_coverage_note": "3 providers queried via MCP. Not whole of market."
+      },
+      "prev_hash": "sha256:80ab8f5ff64d44e2cac452f2a832c1f5bd5375711decb196a658a0dc02062134",
+      "hash": "sha256:94ca88e8adb865dd5ba36d42aaa39f3450ed2f2c43f96cef0c9297ed3f14c051"
+    },
+    {
+      "seq": 7,
+      "at": "2026-10-02T08:01:45Z",
+      "type": "disclosure_presented",
+      "actor": "provider",
+      "payload": {
+        "document_kind": "ipid",
+        "document_hash": "sha256:590a172ac965b46a9fa19ab83b04190b800564a03da5c1b3f38358d14452ceb3",
+        "document_url": "https://newco.example/docs/home-plus-ipid.pdf",
+        "presented_to": "principal",
+        "plain_summary": "Covers buildings and contents with accidental damage. 200 GBP excess. Not covered: wear and tear, unoccupied over 60 days."
+      },
+      "prev_hash": "sha256:94ca88e8adb865dd5ba36d42aaa39f3450ed2f2c43f96cef0c9297ed3f14c051",
+      "hash": "sha256:b95e1872e5e8e9563837761fdb8c9eb1f05c234466bb12597f7188f1000f4d97"
+    },
+    {
+      "seq": 8,
+      "at": "2026-10-02T08:01:50Z",
+      "type": "selection_made",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_newco",
+        "rationale": "Cheapest option that meets both must-haves. Saves 91 GBP versus renewal and lowers the excess.",
+        "within_mandate_limits": true
+      },
+      "prev_hash": "sha256:b95e1872e5e8e9563837761fdb8c9eb1f05c234466bb12597f7188f1000f4d97",
+      "hash": "sha256:9135fd5582dc9defa951c69cb096fdbf59d937330bd31c0d037d5d36c968527d"
+    },
+    {
+      "seq": 9,
+      "at": "2026-10-02T08:14:02Z",
+      "type": "human_confirmation",
+      "actor": "principal",
+      "payload": {
+        "method": "passkey",
+        "decision": "approved",
+        "shown_summary_hash": "sha256:b4253799e6c4eb8f0998574ebcce44e9f28c1f2974d4889ca2f50cf780d047d8"
+      },
+      "prev_hash": "sha256:9135fd5582dc9defa951c69cb096fdbf59d937330bd31c0d037d5d36c968527d",
+      "hash": "sha256:77fd26991c11462a7575bf0278bcd04157668ad9fcac3b5dfd8721822a27a9d1"
+    },
+    {
+      "seq": 10,
+      "at": "2026-10-02T08:14:20Z",
+      "type": "action_executed",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_newco",
+        "provider_reference": "NC-HP-55120",
+        "amount_committed": {
+          "amount": "298.00",
+          "currency": "GBP"
+        },
+        "payment_mandate_ref": "ap2:pm_example_123"
+      },
+      "prev_hash": "sha256:77fd26991c11462a7575bf0278bcd04157668ad9fcac3b5dfd8721822a27a9d1",
+      "hash": "sha256:ec4c3d4dd7aaa32b90db6c18a43f0cc29a8e753243eae09eeb40df2028d461e8"
+    },
+    {
+      "seq": 11,
+      "at": "2026-10-02T08:14:25Z",
+      "type": "post_sale_notice",
+      "actor": "provider",
+      "payload": {
+        "notice_kind": "cancellation_window",
+        "detail": "14 day cooling-off period applies.",
+        "deadline": "2026-10-16T23:59:59Z"
+      },
+      "prev_hash": "sha256:ec4c3d4dd7aaa32b90db6c18a43f0cc29a8e753243eae09eeb40df2028d461e8",
+      "hash": "sha256:068c7e3851b344c2818e609f66092b979d9ebc313ccc94375017b9d98c7aa54b"
+    }
+  ],
+  "outcome_evidence": {
+    "products_and_services": {
+      "event_seqs": [
+        4,
+        5
+      ],
+      "note": "Selected product met all stated requirements."
+    },
+    "price_and_value": {
+      "event_seqs": [
+        1,
+        6,
+        8
+      ],
+      "note": "Renewal rise caught and a cheaper compliant option chosen."
+    },
+    "consumer_understanding": {
+      "event_seqs": [
+        7,
+        9
+      ],
+      "note": "IPID summarised and shown before confirmation."
+    },
+    "consumer_support": {
+      "event_seqs": [
+        11
+      ],
+      "note": "Cooling-off rights notified."
+    }
+  },
+  "seal": {
+    "final_event_hash": "sha256:068c7e3851b344c2818e609f66092b979d9ebc313ccc94375017b9d98c7aa54b",
+    "sealed_at": "2026-10-02T08:14:30Z",
+    "signatures": [
+      {
+        "signer": "agent",
+        "alg": "ES256",
+        "key_id": "agt_homehelper_01#k1",
+        "value": "UNSIGNED-EXAMPLE"
+      },
+      {
+        "signer": "provider",
+        "alg": "ES256",
+        "key_id": "prov_newco#k1",
+        "value": "UNSIGNED-EXAMPLE"
+      }
+    ]
+  }
+}
