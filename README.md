@@ -103,8 +103,8 @@ examples/
 scripts/
   chain.py              canonical JSON and hashing, shared by the scripts below
   make_examples.py      builds the examples with a real hash chain
-  validate.py           schema, chain, timestamp, evidence and seal checks,
-                        plus the human confirmation rule
+  validate.py           schema, chain, timestamp, evidence, quote reference and
+                        seal checks, plus the human confirmation rule
   check.sh              everything CI runs
 SPEC.md                 every field, the cross-document rules, and exact hashing
 ROADMAP.md              phase by phase plan

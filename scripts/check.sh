@@ -47,6 +47,34 @@ expect_fail "schema-invalid trace is reported, not crashed on" "mandate_ref" "$M
 expect_fail "quote with neither price nor rate is rejected" "needs at least one of: price, aer" \
   examples/fixed-rate-savings-switch.mandate.json "$TMP/no-rate.json"
 
+# Variants whose hash chain is recomputed after the edit, so the chain is valid
+# and only the quote reference check can object.
+"$PY" - "$T" "$TMP" <<'EOF'
+import json, sys
+sys.path.insert(0, "scripts")
+from chain import event_hash
+
+src, out = sys.argv[1], sys.argv[2]
+
+def variant(name, mutate):
+    t = json.load(open(src))
+    mutate(t["events"])
+    prev = t["mandate_ref"]["mandate_hash"]
+    for ev in t["events"]:
+        ev["prev_hash"] = prev
+        ev["hash"] = event_hash(ev)
+        prev = ev["hash"]
+    t["seal"]["final_event_hash"] = prev
+    json.dump(t, open(f"{out}/{name}.json", "w"))
+
+variant("dangling-ref", lambda e: e[8]["payload"].update(quote_id="q_nowhere"))
+variant("duplicate-quote", lambda e: e[3]["payload"].update(quote_id="q_newco"))
+EOF
+expect_fail "selection of a quote nobody offered is caught" \
+  "event 8 (selection_made): refers to quote 'q_nowhere', but no earlier quote_received offered it" "$M" "$TMP/dangling-ref.json"
+expect_fail "two quotes sharing an id is caught" \
+  "event 3 (quote_received): quote_id 'q_newco' was already used by event 2" "$M" "$TMP/duplicate-quote.json"
+
 echo "not json" > "$TMP/garbage.json"
 expect_fail "unreadable file is reported" "not valid JSON" "$M" "$TMP/garbage.json"
 

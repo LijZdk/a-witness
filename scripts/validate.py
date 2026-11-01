@@ -8,11 +8,13 @@ Checks, in order:
   4. Event timestamps never go backwards, and the seal is not dated before
      the final event.
   5. Every event number cited in outcome_evidence exists in the trace.
-  6. The seal covers the final event.
-  7. Only if the record is intact: the journey obeyed the mandate. So far
+  6. Every quote_received has a unique quote_id, and every quote an event
+     refers to was received earlier in the trace.
+  7. The seal covers the final event.
+  8. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
 
-Checks 1-6 ask "is this record genuine?". Check 7 asks "did the agent do
+Checks 1-7 ask "is this record genuine?". Check 8 asks "did the agent do
 what it was allowed to?". The report says which kind of failure it found.
 
 Signature checking is a Phase 2 job. The other mandate rules (price limits,
@@ -122,6 +124,38 @@ def evidence_problems(trace):
     return problems
 
 
+def quote_refs(event):
+    """The quote ids an event refers to, by event type. quote_received defines ids; it does not refer to them."""
+    p, kind = event["payload"], event["type"]
+    if kind in ("requirement_check", "selection_made", "action_executed"):
+        return [p["quote_id"]]
+    if kind == "alternatives_considered":
+        return [o["quote_id"] for o in p["options"]]
+    if kind in ("escalation", "error") and "related_quote_id" in p:
+        return [p["related_quote_id"]]
+    return []
+
+
+def reference_problems(trace):
+    """Each quote_received has its own quote_id, and every quote an event refers to
+    was received earlier in the same trace. Otherwise a reviewer cannot tell which
+    offer a check, a choice or a purchase was about."""
+    problems = []
+    received = {}  # quote_id -> seq of the quote_received that introduced it
+    for ev in trace["events"]:
+        seq, kind = ev["seq"], ev["type"]
+        if kind == "quote_received":
+            qid = ev["payload"]["quote_id"]
+            if qid in received:
+                problems.append(f"event {seq} (quote_received): quote_id '{qid}' was already used by event {received[qid]}")
+            else:
+                received[qid] = seq
+        for qid in quote_refs(ev):
+            if qid not in received:
+                problems.append(f"event {seq} ({kind}): refers to quote '{qid}', but no earlier quote_received offered it")
+    return problems
+
+
 def confirmation_problems(mandate, trace):
     """Every binding action needs its own live yes from the principal, given
     after the agent chose what to buy.
@@ -179,7 +213,8 @@ def main(argv):
     if problems:
         return fail(problems, f"{name}: the record is malformed")
 
-    problems = chain_problems(mandate, trace) + time_problems(trace) + evidence_problems(trace)
+    problems = (chain_problems(mandate, trace) + time_problems(trace)
+                + evidence_problems(trace) + reference_problems(trace))
     if problems:
         return fail(problems, f"{name}: the record is broken or has been tampered with")
 

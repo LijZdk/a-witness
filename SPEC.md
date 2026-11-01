@@ -254,7 +254,7 @@ A provider offered a product. Actor: usually `provider`. Must have a `price`, an
 
 | Field | Meaning |
 |---|---|
-| `quote_id` | Identifier for this quote, used by later events to refer to it. |
+| `quote_id` | Identifier for this quote, unique within the trace. Later events refer to the quote by it. |
 | `provider_id` | Who offered it. |
 | `provider_frn` | *Optional.* The provider's FCA Firm Reference Number, so a reviewer can check it on the FCA register. |
 | `product_id` | Which product. |
@@ -374,7 +374,7 @@ These are the rules no single schema can express. The last column says whether t
 | 5 | Event times never go backwards, and `seal.sealed_at` is not before the last event. | Yes |
 | 6 | `seal.final_event_hash` is the last event's `hash`. | Yes |
 | 7 | Every `seq` cited in `outcome_evidence` exists. | Yes |
-| 8 | Every `quote_id` in a later event refers to a `quote_received` earlier in the same trace. | No |
+| 8 | Every `quote_received` has its own `quote_id`, unique within the trace. Every `quote_id` or `related_quote_id` in another event (including each option in `alternatives_considered`) refers to a `quote_received` earlier in the same trace. | Yes |
 | 9 | **Human confirmation.** When `human_confirmation` is `always`, every `action_executed` needs its own approval: a `human_confirmation` event with actor `principal` and decision `approved`, after the most recent `selection_made` and after any earlier `action_executed`. A new selection cancels an earlier approval, because a yes to one choice is not a yes to another. | Yes, for `always` only |
 | 10 | `journey.product_class` and `journey.action` are within the mandate's `scope`. | No |
 | 11 | Every event falls inside the mandate's `validity` window, and the mandate was not revoked. | No |
