@@ -53,9 +53,17 @@ def load(path):
         raise Unreadable(f"{path}: not valid JSON ({e})")
 
 
+def describe(error):
+    """jsonschema's message, except where it would dump the whole object instead of saying what is wrong."""
+    branches = error.validator_value
+    if error.validator == "anyOf" and all(set(b) == {"required"} for b in branches):
+        return "needs at least one of: " + ", ".join(f for b in branches for f in b["required"])
+    return error.message
+
+
 def schema_errors(doc, schema_name):
     v = Draft202012Validator(SCHEMAS[schema_name], registry=REGISTRY, format_checker=FormatChecker())
-    return [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {e.message}"
+    return [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {describe(e)}"
             for e in sorted(v.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))]
 
 

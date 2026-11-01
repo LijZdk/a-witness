@@ -109,7 +109,11 @@
       "properties": {
         "max_price": {
           "$ref": "#/$defs/money",
-          "description": "Most the agent may commit to per product, per term."
+          "description": "Most the agent may commit per product, per term: the premium for insurance, the deposit for savings."
+        },
+        "min_aer": {
+          "$ref": "#/$defs/percent",
+          "description": "For savings: the lowest annual equivalent rate (AER) the agent may accept. Anything lower and it must stop and ask."
         },
         "max_price_increase_pct": {
           "type": "number",
@@ -202,6 +206,11 @@
         "personal_loan",
         "credit_card"
       ]
+    },
+    "percent": {
+      "type": "string",
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "description": "A percentage as a decimal string, e.g. \"4.35\" for 4.35%. A string, like money, to avoid float rounding. Shared with the trace schema."
     },
     "money": {
       "type": "object",

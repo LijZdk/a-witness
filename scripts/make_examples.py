@@ -13,6 +13,12 @@ is whether the journey it records obeyed the mandate.
                                    to expire, the agent buys anyway, although
                                    the mandate says it must always ask first.
 
+  fixed-rate-savings-switch        PASSES. A different product: Jo's fixed
+                                   rate bond is maturing into a poor rollover
+                                   rate. The agent moves the money to a better
+                                   FSCS protected bond, ruling out a higher
+                                   rate that is not protected.
+
 Never hand-edit the files in examples/. Change this script and run it again.
 
 Signatures are placeholders in v0.1. Real signing arrives in Phase 2.
@@ -177,7 +183,8 @@ def chain_events(mandate_hash, raw_events):
     return events
 
 
-def build_trace(trace_id, mandate, raw_events, sealed_at, outcome_evidence=None):
+def build_trace(trace_id, mandate, raw_events, sealed_at, provider_key, outcome_evidence=None):
+    """Chain the events to the mandate and seal them, signed by the agent and the chosen provider."""
     m_hash = hash_mandate(mandate)
     events = chain_events(m_hash, raw_events)
     trace = {
@@ -186,7 +193,7 @@ def build_trace(trace_id, mandate, raw_events, sealed_at, outcome_evidence=None)
         "mandate_ref": {"mandate_id": mandate["mandate_id"], "mandate_hash": m_hash},
         "journey": {
             "action": "switch",
-            "product_class": "home_insurance",
+            "product_class": mandate["scope"]["product_classes"][0],
             "started_at": events[0]["at"],
             "ended_at": events[-1]["at"],
             "status": "completed",
@@ -200,8 +207,8 @@ def build_trace(trace_id, mandate, raw_events, sealed_at, outcome_evidence=None)
         "final_event_hash": events[-1]["hash"],
         "sealed_at": sealed_at,
         "signatures": [
-            {"signer": "agent", "alg": "ES256", "key_id": "agt_homehelper_01#k1", "value": PLACEHOLDER_SIG},
-            {"signer": "provider", "alg": "ES256", "key_id": "prov_newco#k1", "value": PLACEHOLDER_SIG},
+            {"signer": "agent", "alg": "ES256", "key_id": f"{mandate['agent']['agent_id']}#k1", "value": PLACEHOLDER_SIG},
+            {"signer": "provider", "alg": "ES256", "key_id": provider_key, "value": PLACEHOLDER_SIG},
         ],
     }
     return trace
@@ -224,7 +231,7 @@ def switch_example():
             "shown_summary_hash": sha_text("Switch to NewCo Home Plus, 298 GBP/yr, excess 200 GBP. Approve?"),
         }),
     ] + purchase_events(("2026-10-02T08:14:20Z", "2026-10-02T08:14:25Z"))
-    trace = build_trace("trc_Rn4Vb8Ty2Mk6", mandate, raw, "2026-10-02T08:14:30Z", outcome_evidence={
+    trace = build_trace("trc_Rn4Vb8Ty2Mk6", mandate, raw, "2026-10-02T08:14:30Z", "prov_newco#k1", outcome_evidence={
         "products_and_services": {"event_seqs": [4, 5], "note": "Selected product met all stated requirements."},
         "price_and_value": {"event_seqs": [1, 6, 8], "note": "Renewal rise caught and a cheaper compliant option chosen."},
         "consumer_understanding": {"event_seqs": [7, 9], "note": "IPID summarised and shown before confirmation."},
@@ -256,10 +263,155 @@ def no_confirmation_example():
             "related_quote_id": "q_newco",
         }),
     ] + purchase_events(("2026-10-02T11:45:20Z", "2026-10-02T11:45:25Z"))
-    trace = build_trace("trc_Hy3Qm7Xe9Bf2", mandate, raw, "2026-10-02T11:45:30Z")
+    trace = build_trace("trc_Hy3Qm7Xe9Bf2", mandate, raw, "2026-10-02T11:45:30Z", "prov_newco#k1")
     write("home-insurance-no-confirmation", mandate, trace)
+
+
+def savings_example():
+    """A different product: Jo's fixed-rate bond is maturing.
+
+    The incumbent's default is to roll the money into a new bond at a much
+    lower rate. The agent finds a better rate, but has to rule out a higher
+    one that is not FSCS protected and one that locks the money away for
+    too long. Insurance is about what you pay; savings is about what you
+    earn, so quotes carry an AER instead of a price.
+    """
+    mandate_id = "mdt_Fs8Kd2Rw6Tq1"
+    mandate = {
+        "spec_version": "0.1",
+        "mandate_id": mandate_id,
+        "principal": {
+            "principal_ref": "prn_5d2e7b14",
+            "type": "consumer",
+            "jurisdiction": "GB",
+            "support_needs_declared": False,
+        },
+        "agent": {
+            "agent_id": "agt_savewise_01",
+            "operator": "Example Agent Ltd",
+            "software": {"name": "save-wise", "version": "1.2.0", "model": "example-model"},
+            "public_key_ref": "https://agent.example/.well-known/jwks.json#k2",
+        },
+        "scope": {
+            "product_classes": ["fixed_rate_savings"],
+            "allowed_actions": ["quote", "compare", "switch"],
+        },
+        "limits": {
+            "max_price": {"amount": "20000.00", "currency": "GBP"},
+            "min_aer": "4.00",
+            "max_term_months": 24,
+            "max_transactions": 1,
+            "requirements": [
+                {
+                    "id": "req_fscs",
+                    "text": "Must be protected by the FSCS",
+                    "machine_check": {"field": "fscs_protected", "op": "eq", "value": True},
+                },
+                {
+                    # No machine_check: whether two brands share a banking licence
+                    # needs judgement and a lookup, so the agent records how it checked.
+                    "id": "req_licence",
+                    "text": "Not on the same banking licence as my easy access account, so FSCS cover is not shared",
+                },
+            ],
+        },
+        "human_confirmation": "always",
+        "consent": {
+            "granted_at": "2026-10-12T19:00:00Z",
+            "method": "in_app",
+            "terms_hash": sha_text("I allow my agent to move my maturing fixed rate savings within these limits."),
+            "language": "en-GB",
+        },
+        "validity": {
+            "not_before": "2026-10-12T19:00:00Z",
+            "expires_at": "2026-10-20T23:59:59Z",
+            "revocation_url": f"https://wallet.example/mandates/{mandate_id}/status",
+        },
+        "signature": {"alg": "ES256", "key_id": "prn_5d2e7b14#wallet", "value": PLACEHOLDER_SIG},
+    }
+
+    def bond(quote_id, provider, frn, product, aer, term, fscs, licence, **extra):
+        return {
+            "quote_id": quote_id, "provider_id": provider, "provider_frn": frn, "product_id": product,
+            "aer": aer, "term_months": term, **extra,
+            "key_features": {"fscs_protected": fscs, "banking_licence": licence, "interest_paid": "annually"},
+        }
+
+    raw = [
+        ("2026-10-12T19:05:00Z", "intent_captured", "agent", {
+            "summary": "1 year fixed bond with OldBank matures on 20 October. Find a better fixed rate for the 20,000 GBP, no longer than 2 years.",
+            "utterance_hash": sha_text("my savings bond is maturing, get me a decent fixed rate, nothing longer than 2 years"),
+        }),
+        ("2026-10-12T19:05:20Z", "quote_received", "provider",
+         bond("q_rollover", "prov_oldbank", "000004", "oldbank_fix12_rollover", "2.10", 12, True, "lic_oldbank",
+              previous_aer="4.60")),
+        ("2026-10-12T19:05:41Z", "quote_received", "provider",
+         bond("q_steady", "prov_steadybank", "000005", "steady_fix24", "4.35", 24, True, "lic_steadybank")),
+        ("2026-10-12T19:05:43Z", "quote_received", "provider",
+         bond("q_highrate", "prov_highrate", "000006", "highrate_fix24", "4.60", 24, False, "lic_highrate_iom")),
+        ("2026-10-12T19:05:45Z", "quote_received", "provider",
+         bond("q_longfix", "prov_longfix", "000007", "longfix_fix60", "4.50", 60, True, "lic_longfix")),
+        ("2026-10-12T19:06:02Z", "requirement_check", "agent", {
+            "quote_id": "q_steady",
+            "results": [
+                {"requirement_id": "req_fscs", "passed": True},
+                {"requirement_id": "req_licence", "passed": True,
+                 "detail": "SteadyBank holds its own banking licence, different from the easy access account's (checked against the FCA register)."},
+            ],
+        }),
+        ("2026-10-12T19:06:03Z", "requirement_check", "agent", {
+            "quote_id": "q_highrate",
+            "results": [
+                {"requirement_id": "req_fscs", "passed": False, "detail": "Deposit taker is licensed outside the UK and not covered by the FSCS."},
+            ],
+        }),
+        ("2026-10-12T19:06:10Z", "alternatives_considered", "agent", {
+            "options": [
+                {"quote_id": "q_rollover", "considered": True, "excluded_reason": "2.10% AER is below the mandate minimum of 4.00%"},
+                {"quote_id": "q_steady", "considered": True},
+                {"quote_id": "q_highrate", "considered": True, "excluded_reason": "Highest rate, but not FSCS protected"},
+                {"quote_id": "q_longfix", "considered": True, "excluded_reason": "60 month term exceeds the mandate maximum of 24"},
+            ],
+            "market_coverage_note": "4 products from 4 providers via one comparison MCP server. Not whole of market.",
+        }),
+        ("2026-10-12T19:06:15Z", "disclosure_presented", "provider", {
+            "document_kind": "summary_box",
+            "document_hash": sha_text("SteadyBank 2 Year Fixed Rate Bond summary box v7"),
+            "document_url": "https://steadybank.example/docs/fix24-summary-box.pdf",
+            "presented_to": "principal",
+            "plain_summary": "4.35% AER fixed for 2 years, interest paid yearly. You cannot withdraw or close early. FSCS protected.",
+        }),
+        ("2026-10-12T19:06:20Z", "selection_made", "agent", {
+            "quote_id": "q_steady",
+            "rationale": "Best FSCS protected rate within 2 years. 4.35% instead of the 2.10% rollover: about 450 GBP more interest in the first year.",
+            "within_mandate_limits": True,
+        }),
+        ("2026-10-12T19:21:47Z", "human_confirmation", "principal", {
+            "method": "in_app_tap",
+            "decision": "approved",
+            "shown_summary_hash": sha_text("Open SteadyBank 2 Year Fixed at 4.35% AER with 20,000 GBP from your maturing OldBank bond. No access for 2 years. Approve?"),
+        }),
+        ("2026-10-12T19:22:05Z", "action_executed", "provider", {
+            "quote_id": "q_steady",
+            "provider_reference": "SB-FX24-90817",
+            "amount_committed": {"amount": "20000.00", "currency": "GBP"},
+        }),
+        ("2026-10-12T19:22:10Z", "post_sale_notice", "provider", {
+            "notice_kind": "cancellation_window",
+            "detail": "14 day cooling-off period applies. Funds move from OldBank on maturity, 20 October.",
+            "deadline": "2026-10-26T23:59:59Z",
+        }),
+    ]
+    trace = build_trace("trc_Pv6Lc3Zn9Wa5", mandate, raw, "2026-10-12T19:22:15Z", "prov_steadybank#k1", outcome_evidence={
+        "products_and_services": {"event_seqs": [5, 6], "note": "Selected bond met both requirements, including FSCS protection."},
+        "price_and_value": {"event_seqs": [1, 7, 9], "note": "Low rollover rate caught; best protected rate within the term limit chosen."},
+        "consumer_understanding": {"event_seqs": [8, 10], "note": "Summary box shown, including no early access, before confirmation."},
+        "consumer_support": {"event_seqs": [12], "note": "Cooling-off rights and maturity date notified."},
+    })
+    write("fixed-rate-savings-switch", mandate, trace)
 
 
 if __name__ == "__main__":
     switch_example()
     no_confirmation_example()
+    savings_example()

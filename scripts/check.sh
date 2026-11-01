@@ -26,8 +26,9 @@ echo "== examples are reproducible from scripts/make_examples.py"
 git diff --exit-code -- examples/
 echo "ok      examples match the generator"
 
-echo "== the worked example passes"
+echo "== the passing examples pass"
 "$PY" scripts/validate.py "$M" "$T"
+"$PY" scripts/validate.py examples/fixed-rate-savings-switch.mandate.json examples/fixed-rate-savings-switch.trace.json
 
 echo "== the no-confirmation example fails, as a mandate breach rather than a broken record"
 expect_fail "purchase without the principal's yes is flagged" \
@@ -40,6 +41,11 @@ expect_fail "edited price is detected" "event 2: hash does not match" "$M" "$TMP
 
 "$PY" -c 'import json,sys; t=json.load(open(sys.argv[1])); del t["mandate_ref"]; json.dump(t, open(sys.argv[2], "w"))' "$T" "$TMP/no-ref.json"
 expect_fail "schema-invalid trace is reported, not crashed on" "mandate_ref" "$M" "$TMP/no-ref.json"
+
+"$PY" -c 'import json,sys; t=json.load(open(sys.argv[1])); del t["events"][2]["payload"]["aer"]; json.dump(t, open(sys.argv[2], "w"))' \
+  examples/fixed-rate-savings-switch.trace.json "$TMP/no-rate.json"
+expect_fail "quote with neither price nor rate is rejected" "needs at least one of: price, aer" \
+  examples/fixed-rate-savings-switch.mandate.json "$TMP/no-rate.json"
 
 echo "not json" > "$TMP/garbage.json"
 expect_fail "unreadable file is reported" "not valid JSON" "$M" "$TMP/garbage.json"

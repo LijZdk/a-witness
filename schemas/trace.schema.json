@@ -202,14 +202,18 @@
     },
     "p_quote": {
       "type": "object",
-      "required": ["quote_id", "provider_id", "product_id", "price", "term_months"],
+      "description": "A quote carries a price (what the principal pays, e.g. an insurance premium), an AER (what the principal earns, e.g. on savings), or both.",
+      "required": ["quote_id", "provider_id", "product_id", "term_months"],
+      "anyOf": [{ "required": ["price"] }, { "required": ["aer"] }],
       "properties": {
         "quote_id": { "type": "string" },
         "provider_id": { "type": "string" },
         "provider_frn": { "type": "string", "description": "FCA Firm Reference Number, if the provider has one." },
         "product_id": { "type": "string" },
         "price": { "$ref": "#/$defs/money" },
-        "previous_price": { "$ref": "#/$defs/money" },
+        "previous_price": { "$ref": "#/$defs/money", "description": "What the principal paid last term, so a renewal rise is visible." },
+        "aer": { "$ref": "mandate.schema.json#/$defs/percent", "description": "Annual equivalent rate offered." },
+        "previous_aer": { "$ref": "mandate.schema.json#/$defs/percent", "description": "The rate the principal earned last term, so a drop at maturity or renewal is visible." },
         "term_months": { "type": "integer", "minimum": 1 },
         "key_features": { "type": "object", "description": "Structured features used for requirement checks, e.g. {\"excess\": \"250.00\"}." },
         "valid_until": { "type": "string", "format": "date-time" }

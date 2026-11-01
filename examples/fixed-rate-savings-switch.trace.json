@@ -1,0 +1,305 @@
+{
+  "spec_version": "0.1",
+  "trace_id": "trc_Pv6Lc3Zn9Wa5",
+  "mandate_ref": {
+    "mandate_id": "mdt_Fs8Kd2Rw6Tq1",
+    "mandate_hash": "sha256:2e5c52cee7b5b6a4b2b8ad2b5ddc143d5110e5a0fadb99ac9b3b0ccf5e1f58dc"
+  },
+  "journey": {
+    "action": "switch",
+    "product_class": "fixed_rate_savings",
+    "started_at": "2026-10-12T19:05:00Z",
+    "ended_at": "2026-10-12T19:22:10Z",
+    "status": "completed",
+    "transport": "mcp"
+  },
+  "events": [
+    {
+      "seq": 0,
+      "at": "2026-10-12T19:05:00Z",
+      "type": "intent_captured",
+      "actor": "agent",
+      "payload": {
+        "summary": "1 year fixed bond with OldBank matures on 20 October. Find a better fixed rate for the 20,000 GBP, no longer than 2 years.",
+        "utterance_hash": "sha256:2942a84c4310cfdb050c938a9c7579cd646316aa255c7f383d81ea66be8e2970"
+      },
+      "prev_hash": "sha256:2e5c52cee7b5b6a4b2b8ad2b5ddc143d5110e5a0fadb99ac9b3b0ccf5e1f58dc",
+      "hash": "sha256:7d4c67bec42ebf16489277f362760594c0627a84c0b169f0cad6b9b12b4d1a73"
+    },
+    {
+      "seq": 1,
+      "at": "2026-10-12T19:05:20Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_rollover",
+        "provider_id": "prov_oldbank",
+        "provider_frn": "000004",
+        "product_id": "oldbank_fix12_rollover",
+        "aer": "2.10",
+        "term_months": 12,
+        "previous_aer": "4.60",
+        "key_features": {
+          "fscs_protected": true,
+          "banking_licence": "lic_oldbank",
+          "interest_paid": "annually"
+        }
+      },
+      "prev_hash": "sha256:7d4c67bec42ebf16489277f362760594c0627a84c0b169f0cad6b9b12b4d1a73",
+      "hash": "sha256:b7ceade13df6e4bad22cba6dc1a0ee1b5dd5330d17b785906cf58a1944605760"
+    },
+    {
+      "seq": 2,
+      "at": "2026-10-12T19:05:41Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_steady",
+        "provider_id": "prov_steadybank",
+        "provider_frn": "000005",
+        "product_id": "steady_fix24",
+        "aer": "4.35",
+        "term_months": 24,
+        "key_features": {
+          "fscs_protected": true,
+          "banking_licence": "lic_steadybank",
+          "interest_paid": "annually"
+        }
+      },
+      "prev_hash": "sha256:b7ceade13df6e4bad22cba6dc1a0ee1b5dd5330d17b785906cf58a1944605760",
+      "hash": "sha256:8c160ccc4ab3569a81ca8bf38a0fdf80ee0a51f151e971c3fe7b2e5743c5674e"
+    },
+    {
+      "seq": 3,
+      "at": "2026-10-12T19:05:43Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_highrate",
+        "provider_id": "prov_highrate",
+        "provider_frn": "000006",
+        "product_id": "highrate_fix24",
+        "aer": "4.60",
+        "term_months": 24,
+        "key_features": {
+          "fscs_protected": false,
+          "banking_licence": "lic_highrate_iom",
+          "interest_paid": "annually"
+        }
+      },
+      "prev_hash": "sha256:8c160ccc4ab3569a81ca8bf38a0fdf80ee0a51f151e971c3fe7b2e5743c5674e",
+      "hash": "sha256:9d87dcbadc1647138786f2f5bfa9d8c8c158fb42f6626003f6d0afbe11ec0be2"
+    },
+    {
+      "seq": 4,
+      "at": "2026-10-12T19:05:45Z",
+      "type": "quote_received",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_longfix",
+        "provider_id": "prov_longfix",
+        "provider_frn": "000007",
+        "product_id": "longfix_fix60",
+        "aer": "4.50",
+        "term_months": 60,
+        "key_features": {
+          "fscs_protected": true,
+          "banking_licence": "lic_longfix",
+          "interest_paid": "annually"
+        }
+      },
+      "prev_hash": "sha256:9d87dcbadc1647138786f2f5bfa9d8c8c158fb42f6626003f6d0afbe11ec0be2",
+      "hash": "sha256:70137a31b9ea3d570a5c71aef3dd6446d835d770be65ebe77f53badc8ed31c6f"
+    },
+    {
+      "seq": 5,
+      "at": "2026-10-12T19:06:02Z",
+      "type": "requirement_check",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_steady",
+        "results": [
+          {
+            "requirement_id": "req_fscs",
+            "passed": true
+          },
+          {
+            "requirement_id": "req_licence",
+            "passed": true,
+            "detail": "SteadyBank holds its own banking licence, different from the easy access account's (checked against the FCA register)."
+          }
+        ]
+      },
+      "prev_hash": "sha256:70137a31b9ea3d570a5c71aef3dd6446d835d770be65ebe77f53badc8ed31c6f",
+      "hash": "sha256:60052fb9e17926f76b6e99787088b04c88c203d64737d5a122c740168e53bd57"
+    },
+    {
+      "seq": 6,
+      "at": "2026-10-12T19:06:03Z",
+      "type": "requirement_check",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_highrate",
+        "results": [
+          {
+            "requirement_id": "req_fscs",
+            "passed": false,
+            "detail": "Deposit taker is licensed outside the UK and not covered by the FSCS."
+          }
+        ]
+      },
+      "prev_hash": "sha256:60052fb9e17926f76b6e99787088b04c88c203d64737d5a122c740168e53bd57",
+      "hash": "sha256:4ffb0b07cecd919d2cbc9a7a9c6472444edf648073d3a5f9e2334d54e1f82f26"
+    },
+    {
+      "seq": 7,
+      "at": "2026-10-12T19:06:10Z",
+      "type": "alternatives_considered",
+      "actor": "agent",
+      "payload": {
+        "options": [
+          {
+            "quote_id": "q_rollover",
+            "considered": true,
+            "excluded_reason": "2.10% AER is below the mandate minimum of 4.00%"
+          },
+          {
+            "quote_id": "q_steady",
+            "considered": true
+          },
+          {
+            "quote_id": "q_highrate",
+            "considered": true,
+            "excluded_reason": "Highest rate, but not FSCS protected"
+          },
+          {
+            "quote_id": "q_longfix",
+            "considered": true,
+            "excluded_reason": "60 month term exceeds the mandate maximum of 24"
+          }
+        ],
+        "market_coverage_note": "4 products from 4 providers via one comparison MCP server. Not whole of market."
+      },
+      "prev_hash": "sha256:4ffb0b07cecd919d2cbc9a7a9c6472444edf648073d3a5f9e2334d54e1f82f26",
+      "hash": "sha256:8169d0d323840bd2244044e4345c182219047f1688b78451425f7c58bb32ed7d"
+    },
+    {
+      "seq": 8,
+      "at": "2026-10-12T19:06:15Z",
+      "type": "disclosure_presented",
+      "actor": "provider",
+      "payload": {
+        "document_kind": "summary_box",
+        "document_hash": "sha256:339b6cf233ef89c539678aa44aaaa7e6b3a2c13c03ea9617683f494803bfa14a",
+        "document_url": "https://steadybank.example/docs/fix24-summary-box.pdf",
+        "presented_to": "principal",
+        "plain_summary": "4.35% AER fixed for 2 years, interest paid yearly. You cannot withdraw or close early. FSCS protected."
+      },
+      "prev_hash": "sha256:8169d0d323840bd2244044e4345c182219047f1688b78451425f7c58bb32ed7d",
+      "hash": "sha256:5e1e7024bc7d8c9a908eb513abf43e49ea435ed50d612872242493bd9b1f4cef"
+    },
+    {
+      "seq": 9,
+      "at": "2026-10-12T19:06:20Z",
+      "type": "selection_made",
+      "actor": "agent",
+      "payload": {
+        "quote_id": "q_steady",
+        "rationale": "Best FSCS protected rate within 2 years. 4.35% instead of the 2.10% rollover: about 450 GBP more interest in the first year.",
+        "within_mandate_limits": true
+      },
+      "prev_hash": "sha256:5e1e7024bc7d8c9a908eb513abf43e49ea435ed50d612872242493bd9b1f4cef",
+      "hash": "sha256:86e0e4428377bd21cb14de3ebd315c5698962d1803a69d27ab073088042ac48a"
+    },
+    {
+      "seq": 10,
+      "at": "2026-10-12T19:21:47Z",
+      "type": "human_confirmation",
+      "actor": "principal",
+      "payload": {
+        "method": "in_app_tap",
+        "decision": "approved",
+        "shown_summary_hash": "sha256:4d21063537494f9e3042ad05333e19bc2c893809478d6b1a205d1d8e695cbf81"
+      },
+      "prev_hash": "sha256:86e0e4428377bd21cb14de3ebd315c5698962d1803a69d27ab073088042ac48a",
+      "hash": "sha256:9d20c41d7effca5ec165597d6513907cbb61a1a9233c907694d2820606e8be10"
+    },
+    {
+      "seq": 11,
+      "at": "2026-10-12T19:22:05Z",
+      "type": "action_executed",
+      "actor": "provider",
+      "payload": {
+        "quote_id": "q_steady",
+        "provider_reference": "SB-FX24-90817",
+        "amount_committed": {
+          "amount": "20000.00",
+          "currency": "GBP"
+        }
+      },
+      "prev_hash": "sha256:9d20c41d7effca5ec165597d6513907cbb61a1a9233c907694d2820606e8be10",
+      "hash": "sha256:250d53ea61d04a1ec832c6d8a98ea112be7cd4fe5308f7d3cd1dd89c54b257f1"
+    },
+    {
+      "seq": 12,
+      "at": "2026-10-12T19:22:10Z",
+      "type": "post_sale_notice",
+      "actor": "provider",
+      "payload": {
+        "notice_kind": "cancellation_window",
+        "detail": "14 day cooling-off period applies. Funds move from OldBank on maturity, 20 October.",
+        "deadline": "2026-10-26T23:59:59Z"
+      },
+      "prev_hash": "sha256:250d53ea61d04a1ec832c6d8a98ea112be7cd4fe5308f7d3cd1dd89c54b257f1",
+      "hash": "sha256:00a38c6268aa2325d51fec5a62256c28842d4326971da9cf1565eb1f657f33c8"
+    }
+  ],
+  "outcome_evidence": {
+    "products_and_services": {
+      "event_seqs": [
+        5,
+        6
+      ],
+      "note": "Selected bond met both requirements, including FSCS protection."
+    },
+    "price_and_value": {
+      "event_seqs": [
+        1,
+        7,
+        9
+      ],
+      "note": "Low rollover rate caught; best protected rate within the term limit chosen."
+    },
+    "consumer_understanding": {
+      "event_seqs": [
+        8,
+        10
+      ],
+      "note": "Summary box shown, including no early access, before confirmation."
+    },
+    "consumer_support": {
+      "event_seqs": [
+        12
+      ],
+      "note": "Cooling-off rights and maturity date notified."
+    }
+  },
+  "seal": {
+    "final_event_hash": "sha256:00a38c6268aa2325d51fec5a62256c28842d4326971da9cf1565eb1f657f33c8",
+    "sealed_at": "2026-10-12T19:22:15Z",
+    "signatures": [
+      {
+        "signer": "agent",
+        "alg": "ES256",
+        "key_id": "agt_savewise_01#k1",
+        "value": "UNSIGNED-EXAMPLE"
+      },
+      {
+        "signer": "provider",
+        "alg": "ES256",
+        "key_id": "prov_steadybank#k1",
+        "value": "UNSIGNED-EXAMPLE"
+      }
+    ]
+  }
+}

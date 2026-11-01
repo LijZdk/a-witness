@@ -1,0 +1,71 @@
+{
+  "spec_version": "0.1",
+  "mandate_id": "mdt_Fs8Kd2Rw6Tq1",
+  "principal": {
+    "principal_ref": "prn_5d2e7b14",
+    "type": "consumer",
+    "jurisdiction": "GB",
+    "support_needs_declared": false
+  },
+  "agent": {
+    "agent_id": "agt_savewise_01",
+    "operator": "Example Agent Ltd",
+    "software": {
+      "name": "save-wise",
+      "version": "1.2.0",
+      "model": "example-model"
+    },
+    "public_key_ref": "https://agent.example/.well-known/jwks.json#k2"
+  },
+  "scope": {
+    "product_classes": [
+      "fixed_rate_savings"
+    ],
+    "allowed_actions": [
+      "quote",
+      "compare",
+      "switch"
+    ]
+  },
+  "limits": {
+    "max_price": {
+      "amount": "20000.00",
+      "currency": "GBP"
+    },
+    "min_aer": "4.00",
+    "max_term_months": 24,
+    "max_transactions": 1,
+    "requirements": [
+      {
+        "id": "req_fscs",
+        "text": "Must be protected by the FSCS",
+        "machine_check": {
+          "field": "fscs_protected",
+          "op": "eq",
+          "value": true
+        }
+      },
+      {
+        "id": "req_licence",
+        "text": "Not on the same banking licence as my easy access account, so FSCS cover is not shared"
+      }
+    ]
+  },
+  "human_confirmation": "always",
+  "consent": {
+    "granted_at": "2026-10-12T19:00:00Z",
+    "method": "in_app",
+    "terms_hash": "sha256:d6e072dd443d05bd664e6bde91648c7b0cdc05bbdcd6773df7f68f05b07d3cbe",
+    "language": "en-GB"
+  },
+  "validity": {
+    "not_before": "2026-10-12T19:00:00Z",
+    "expires_at": "2026-10-20T23:59:59Z",
+    "revocation_url": "https://wallet.example/mandates/mdt_Fs8Kd2Rw6Tq1/status"
+  },
+  "signature": {
+    "alg": "ES256",
+    "key_id": "prn_5d2e7b14#wallet",
+    "value": "UNSIGNED-EXAMPLE"
+  }
+}

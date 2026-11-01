@@ -26,7 +26,7 @@ Think of it like building a car from the frame up: frame (schemas), locks (signi
 - [x] Worked example: home insurance renewal switch, with a real hash chain
 - [x] `validate.py`: schema, chain, mandate link and seal checks
 - [x] Second example that should **fail**: agent buys without `human_confirmation` when the mandate says `always` (`home-insurance-no-confirmation`; `validate.py` gained this one rule early so CI can prove it fails)
-- [ ] Third example from a different product: fixed rate savings switch
+- [x] Third example from a different product: fixed rate savings switch (`fixed-rate-savings-switch`; quotes gained `aer` and `previous_aer`, mandates gained `min_aer`)
 - [x] GitHub Action running validation on every push (`scripts/check.sh`, which also proves tampered and malformed inputs fail)
 - [ ] Short `SPEC.md` explaining each field in plain English
 
@@ -74,7 +74,7 @@ The spec and test vectors are the source of truth. The Go code is the reference 
 - [ ] `a-witness verify <mandate> <trace>`: integrity (schema, chain, signatures, mandate validity window, revocation)
 - [ ] Rule checks against the mandate:
   - binding action without required human confirmation (port from `validate.py`, which already checks it for `always`; add `above_limits` once the price rules exist, and flag `never`)
-  - price above `max_price` or renewal rise above `max_price_increase_pct`
+  - price above `max_price` or renewal rise above `max_price_increase_pct`; for savings, AER below `min_aer`
   - selected quote failed a requirement check
   - product class or action outside scope
   - binding action after mandate expiry
