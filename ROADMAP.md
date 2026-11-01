@@ -11,13 +11,13 @@ Think of it like building a car from the frame up: frame (schemas), locks (signi
 **Goal:** a clean home for the work.
 
 - [x] Confirm the name (a-witness) is free on GitHub, npm and PyPI (checked 2026-10-31: no npm package, PyPI project, or GitHub user/org of that name)
-- [x] Create a personal GitHub repo (`LijZdk/a-witness`, private), Apache 2.0 licence, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
+- [x] Create a personal GitHub repo (`LijZdk/a-witness`; private at first, public since 2026-11-01), Apache 2.0 licence, `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`
 
 **Done when:** repo exists (private until Phase 1 ends).
 
 ---
 
-## Phase 1: Schemas v0.1 (1 to 2 sessions) - STARTED
+## Phase 1: Schemas v0.1 (1 to 2 sessions) - DONE 2026-11-01
 
 **Goal:** the two formats exist, have a worked example, and are machine-checked.
 
