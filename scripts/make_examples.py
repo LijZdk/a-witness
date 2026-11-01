@@ -56,7 +56,7 @@ def home_mandate(mandate_id):
             "allowed_actions": ["quote", "compare", "renew", "switch"],
         },
         "limits": {
-            "max_price": {"amount": "350.00", "currency": "GBP"},
+            "max_commitment": {"amount": "350.00", "currency": "GBP"},
             "max_price_increase_pct": 10,
             "max_term_months": 12,
             "max_transactions": 1,
@@ -297,7 +297,7 @@ def savings_example():
             "allowed_actions": ["quote", "compare", "switch"],
         },
         "limits": {
-            "max_price": {"amount": "20000.00", "currency": "GBP"},
+            "max_commitment": {"amount": "20000.00", "currency": "GBP"},
             "min_aer": "4.00",
             "max_term_months": 24,
             "max_transactions": 1,

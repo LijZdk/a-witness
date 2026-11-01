@@ -3,7 +3,7 @@
   "trace_id": "trc_Pv6Lc3Zn9Wa5",
   "mandate_ref": {
     "mandate_id": "mdt_Fs8Kd2Rw6Tq1",
-    "mandate_hash": "sha256:2e5c52cee7b5b6a4b2b8ad2b5ddc143d5110e5a0fadb99ac9b3b0ccf5e1f58dc"
+    "mandate_hash": "sha256:4de4ca53c3598e949280ff3cfc865fd017d562d0909b0e8f5ec9131fa9eecb65"
   },
   "journey": {
     "action": "switch",
@@ -23,8 +23,8 @@
         "summary": "1 year fixed bond with OldBank matures on 20 October. Find a better fixed rate for the 20,000 GBP, no longer than 2 years.",
         "utterance_hash": "sha256:2942a84c4310cfdb050c938a9c7579cd646316aa255c7f383d81ea66be8e2970"
       },
-      "prev_hash": "sha256:2e5c52cee7b5b6a4b2b8ad2b5ddc143d5110e5a0fadb99ac9b3b0ccf5e1f58dc",
-      "hash": "sha256:7d4c67bec42ebf16489277f362760594c0627a84c0b169f0cad6b9b12b4d1a73"
+      "prev_hash": "sha256:4de4ca53c3598e949280ff3cfc865fd017d562d0909b0e8f5ec9131fa9eecb65",
+      "hash": "sha256:f37981116c9403e3bc1e47e31d462dd0d6343c02b780e8ef94a47fa367892ae9"
     },
     {
       "seq": 1,
@@ -45,8 +45,8 @@
           "interest_paid": "annually"
         }
       },
-      "prev_hash": "sha256:7d4c67bec42ebf16489277f362760594c0627a84c0b169f0cad6b9b12b4d1a73",
-      "hash": "sha256:b7ceade13df6e4bad22cba6dc1a0ee1b5dd5330d17b785906cf58a1944605760"
+      "prev_hash": "sha256:f37981116c9403e3bc1e47e31d462dd0d6343c02b780e8ef94a47fa367892ae9",
+      "hash": "sha256:397c30ca5cea92402138e5a381e42df8f797ca29c13d81199b443e039de09b59"
     },
     {
       "seq": 2,
@@ -66,8 +66,8 @@
           "interest_paid": "annually"
         }
       },
-      "prev_hash": "sha256:b7ceade13df6e4bad22cba6dc1a0ee1b5dd5330d17b785906cf58a1944605760",
-      "hash": "sha256:8c160ccc4ab3569a81ca8bf38a0fdf80ee0a51f151e971c3fe7b2e5743c5674e"
+      "prev_hash": "sha256:397c30ca5cea92402138e5a381e42df8f797ca29c13d81199b443e039de09b59",
+      "hash": "sha256:69982f7486866feb81bc89f91e7566561e15a0cf939fe7c04918deda4f4aebe9"
     },
     {
       "seq": 3,
@@ -87,8 +87,8 @@
           "interest_paid": "annually"
         }
       },
-      "prev_hash": "sha256:8c160ccc4ab3569a81ca8bf38a0fdf80ee0a51f151e971c3fe7b2e5743c5674e",
-      "hash": "sha256:9d87dcbadc1647138786f2f5bfa9d8c8c158fb42f6626003f6d0afbe11ec0be2"
+      "prev_hash": "sha256:69982f7486866feb81bc89f91e7566561e15a0cf939fe7c04918deda4f4aebe9",
+      "hash": "sha256:fdb586e59e52c64b5b8c0adea82d5e95b197365d5a99113114be4b2728b9450e"
     },
     {
       "seq": 4,
@@ -108,8 +108,8 @@
           "interest_paid": "annually"
         }
       },
-      "prev_hash": "sha256:9d87dcbadc1647138786f2f5bfa9d8c8c158fb42f6626003f6d0afbe11ec0be2",
-      "hash": "sha256:70137a31b9ea3d570a5c71aef3dd6446d835d770be65ebe77f53badc8ed31c6f"
+      "prev_hash": "sha256:fdb586e59e52c64b5b8c0adea82d5e95b197365d5a99113114be4b2728b9450e",
+      "hash": "sha256:1a6c3900405fefa7423dcb1c2ea5f08ea292eb67a13f43f11e1935ef89a685fc"
     },
     {
       "seq": 5,
@@ -130,8 +130,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:70137a31b9ea3d570a5c71aef3dd6446d835d770be65ebe77f53badc8ed31c6f",
-      "hash": "sha256:60052fb9e17926f76b6e99787088b04c88c203d64737d5a122c740168e53bd57"
+      "prev_hash": "sha256:1a6c3900405fefa7423dcb1c2ea5f08ea292eb67a13f43f11e1935ef89a685fc",
+      "hash": "sha256:ebdc0cd40e8b7374a611f49854feda96edf6634adec8871c0764690f15da9f2f"
     },
     {
       "seq": 6,
@@ -148,8 +148,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:60052fb9e17926f76b6e99787088b04c88c203d64737d5a122c740168e53bd57",
-      "hash": "sha256:4ffb0b07cecd919d2cbc9a7a9c6472444edf648073d3a5f9e2334d54e1f82f26"
+      "prev_hash": "sha256:ebdc0cd40e8b7374a611f49854feda96edf6634adec8871c0764690f15da9f2f",
+      "hash": "sha256:3917544fba466427a79001f1282baaa495ea271e49a2807e36b794aa99229d0f"
     },
     {
       "seq": 7,
@@ -180,8 +180,8 @@
         ],
         "market_coverage_note": "4 products from 4 providers via one comparison MCP server. Not whole of market."
       },
-      "prev_hash": "sha256:4ffb0b07cecd919d2cbc9a7a9c6472444edf648073d3a5f9e2334d54e1f82f26",
-      "hash": "sha256:8169d0d323840bd2244044e4345c182219047f1688b78451425f7c58bb32ed7d"
+      "prev_hash": "sha256:3917544fba466427a79001f1282baaa495ea271e49a2807e36b794aa99229d0f",
+      "hash": "sha256:f139f3cf049def07d47657cdb195d4757140e15ea4f347b2c60cb4914813d983"
     },
     {
       "seq": 8,
@@ -195,8 +195,8 @@
         "presented_to": "principal",
         "plain_summary": "4.35% AER fixed for 2 years, interest paid yearly. You cannot withdraw or close early. FSCS protected."
       },
-      "prev_hash": "sha256:8169d0d323840bd2244044e4345c182219047f1688b78451425f7c58bb32ed7d",
-      "hash": "sha256:5e1e7024bc7d8c9a908eb513abf43e49ea435ed50d612872242493bd9b1f4cef"
+      "prev_hash": "sha256:f139f3cf049def07d47657cdb195d4757140e15ea4f347b2c60cb4914813d983",
+      "hash": "sha256:a19a68b88e41e76bf0e80c6eb394e25f10d75c54dddc875c6d94ee7e9e133b0a"
     },
     {
       "seq": 9,
@@ -208,8 +208,8 @@
         "rationale": "Best FSCS protected rate within 2 years. 4.35% instead of the 2.10% rollover: about 450 GBP more interest in the first year.",
         "within_mandate_limits": true
       },
-      "prev_hash": "sha256:5e1e7024bc7d8c9a908eb513abf43e49ea435ed50d612872242493bd9b1f4cef",
-      "hash": "sha256:86e0e4428377bd21cb14de3ebd315c5698962d1803a69d27ab073088042ac48a"
+      "prev_hash": "sha256:a19a68b88e41e76bf0e80c6eb394e25f10d75c54dddc875c6d94ee7e9e133b0a",
+      "hash": "sha256:830fdf2a26cb5b866a2660b7c711ece3e1e8036b41846f835851de0a36e0f358"
     },
     {
       "seq": 10,
@@ -221,8 +221,8 @@
         "decision": "approved",
         "shown_summary_hash": "sha256:4d21063537494f9e3042ad05333e19bc2c893809478d6b1a205d1d8e695cbf81"
       },
-      "prev_hash": "sha256:86e0e4428377bd21cb14de3ebd315c5698962d1803a69d27ab073088042ac48a",
-      "hash": "sha256:9d20c41d7effca5ec165597d6513907cbb61a1a9233c907694d2820606e8be10"
+      "prev_hash": "sha256:830fdf2a26cb5b866a2660b7c711ece3e1e8036b41846f835851de0a36e0f358",
+      "hash": "sha256:02d4a25323772050da20ef51a94531c18504b1fe886bca48829ec1e9da067635"
     },
     {
       "seq": 11,
@@ -237,8 +237,8 @@
           "currency": "GBP"
         }
       },
-      "prev_hash": "sha256:9d20c41d7effca5ec165597d6513907cbb61a1a9233c907694d2820606e8be10",
-      "hash": "sha256:250d53ea61d04a1ec832c6d8a98ea112be7cd4fe5308f7d3cd1dd89c54b257f1"
+      "prev_hash": "sha256:02d4a25323772050da20ef51a94531c18504b1fe886bca48829ec1e9da067635",
+      "hash": "sha256:66c775bd2e45ce41c69936719350c46aacd204361063ecbeab16a7eb606de8e0"
     },
     {
       "seq": 12,
@@ -250,8 +250,8 @@
         "detail": "14 day cooling-off period applies. Funds move from OldBank on maturity, 20 October.",
         "deadline": "2026-10-26T23:59:59Z"
       },
-      "prev_hash": "sha256:250d53ea61d04a1ec832c6d8a98ea112be7cd4fe5308f7d3cd1dd89c54b257f1",
-      "hash": "sha256:00a38c6268aa2325d51fec5a62256c28842d4326971da9cf1565eb1f657f33c8"
+      "prev_hash": "sha256:66c775bd2e45ce41c69936719350c46aacd204361063ecbeab16a7eb606de8e0",
+      "hash": "sha256:401fef5da078edc71966037ac3166595c1708d05a1856c47fa86add25e0fb6c9"
     }
   ],
   "outcome_evidence": {
@@ -285,7 +285,7 @@
     }
   },
   "seal": {
-    "final_event_hash": "sha256:00a38c6268aa2325d51fec5a62256c28842d4326971da9cf1565eb1f657f33c8",
+    "final_event_hash": "sha256:401fef5da078edc71966037ac3166595c1708d05a1856c47fa86add25e0fb6c9",
     "sealed_at": "2026-10-12T19:22:15Z",
     "signatures": [
       {

@@ -107,7 +107,7 @@
       "type": "object",
       "additionalProperties": false,
       "properties": {
-        "max_price": {
+        "max_commitment": {
           "$ref": "#/$defs/money",
           "description": "Most the agent may commit per product, per term: the premium for insurance, the deposit for savings."
         },

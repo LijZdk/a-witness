@@ -29,7 +29,7 @@
     ]
   },
   "limits": {
-    "max_price": {
+    "max_commitment": {
       "amount": "350.00",
       "currency": "GBP"
     },

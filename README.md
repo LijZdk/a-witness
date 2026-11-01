@@ -25,6 +25,8 @@ Two small, open JSON formats plus tooling:
 | **Mandate** | The permission slip. What the person allowed their agent to do: which products, which actions, price limits, must-haves, when to ask first, when it expires. Signed by the person. |
 | **Trace** | The flight recording. Every step of the journey: quotes received, documents shown, alternatives ruled out and why, the human "yes", the purchase. Each event is hash-chained to the one before, the chain starts from the mandate, and the agent and provider sign the end of it, so nothing can be edited, removed or reordered without detection. (Signing arrives in Phase 2; see [How the chain works](#how-the-chain-works).) |
 
+Every field is explained in plain English in [SPEC.md](SPEC.md), along with the hashing rules and what a verifier checks.
+
 Later phases add a verifier CLI, drop-in middleware for MCP servers, and mappings to AP2 and UCP.
 
 ## What it is not
@@ -104,6 +106,7 @@ scripts/
   validate.py           schema, chain, timestamp, evidence and seal checks,
                         plus the human confirmation rule
   check.sh              everything CI runs
+SPEC.md                 every field, the cross-document rules, and exact hashing
 ROADMAP.md              phase by phase plan
 CONTRIBUTING.md         how to help
 ```
