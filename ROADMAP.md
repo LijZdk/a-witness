@@ -34,17 +34,17 @@ Think of it like building a car from the frame up: frame (schemas), locks (signi
 
 ---
 
-## Phase 2: Go core, real signatures and canonicalisation (2 to 3 sessions)
+## Phase 2: Go core, real signatures and canonicalisation (2 to 3 sessions) - STARTED
 
 **Goal:** the chain is cryptographically real, not just hashed, in a Go reference library.
 
-- [ ] Go module `github.com/LijZdk/a-witness` (Go 1.23+), layout below
-- [ ] Switch to RFC 8785 (JSON Canonicalization Scheme)
+- [x] Go module `github.com/LijZdk/a-witness` (Go 1.23+), layout below
+- [x] Switch to RFC 8785 (JSON Canonicalization Scheme): Go `witness/canon`, Python via the `rfc8785` library; the examples' hashes did not change
 - [ ] Sign mandates and seals with ES256 / EdDSA as detached JWS (prefer standard library crypto; one small JWS dependency at most)
 - [ ] Key discovery via JWKS URLs in `public_key_ref`
-- [ ] Core API: `HashEvent`, `AppendEvent`, `Seal`, `Verify`
-- [ ] Test vectors in `testdata/vectors/`: known inputs with known hashes and signatures, so other languages can implement and check themselves
-- [ ] CI: `go test ./...`, `go vet`, `staticcheck`, plus the Python schema check until Phase 3 replaces it
+- [ ] Core API: `HashEvent`, `AppendEvent`, `Seal`, `Verify` (`HashEvent`, `MandateHash` and an integrity-only `Verify` for rules 1-8 done; `AppendEvent` and `Seal` come with signing)
+- [ ] Test vectors in `testdata/vectors/`: known inputs with known hashes and signatures, so other languages can implement and check themselves (canonical JSON, numbers and hashes done; signatures to come)
+- [x] CI: `go test ./...`, `go vet`, `staticcheck`, plus the Python schema check until Phase 3 replaces it
 
 Package layout:
 
@@ -53,7 +53,8 @@ cmd/a-witness/        CLI entry point, builds the `a-witness` binary (Phase 3)
 witness/              public API: Mandate, Trace, Event types; AppendEvent, Seal, Verify
 witness/canon/        RFC 8785 canonical JSON
 witness/sign/         JWS sign and verify, JWKS key lookup
-witness/schema/       embedded JSON Schemas and validation (go:embed ../../schemas)
+witness/schema/       JSON Schema validation, using the schemas embedded by schemas/embed.go
+                      (go:embed cannot reach a parent directory, so the embedding lives in schemas/)
 witness/rules/        mandate rule checks (Phase 3)
 witness/report/       text, JSON and HTML reports (Phase 3)
 testdata/vectors/     cross-language test vectors

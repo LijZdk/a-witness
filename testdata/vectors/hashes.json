@@ -1,0 +1,12 @@
+{
+  "description": "a-witness hashes (SPEC.md, \"Hashing\"). kind \"text\": SHA-256 of the UTF-8 bytes. kind \"mandate\": of the canonical JSON without \"signature\". kind \"event\": of the canonical JSON without \"hash\".",
+  "generated_by": "scripts/make_vectors.py, using scripts/chain.py",
+  "vectors": [
+    {"name": "text: consent wording", "kind": "text", "input": "I allow my agent to renew or switch my home insurance within these limits.", "hash": "sha256:397564bdfbf380b75f07b1f8c30e40ae525efab4ffeb13975f0938552d3e9e89"},
+    {"name": "text: empty", "kind": "text", "input": "", "hash": "sha256:e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"},
+    {"name": "text: non-ASCII is hashed as UTF-8 with no normalisation", "kind": "text", "input": "café", "hash": "sha256:850f7dc43910ff890f8879c0ed26fe697c93a067ad93a7d50f466a7028a9bf4e"},
+    {"name": "text: decomposed form hashes differently", "kind": "text", "input": "café", "hash": "sha256:81ef060bcd98adc7824eb5c1ada83c32491b16018e11e79f00ab9d09e04b015a"},
+    {"name": "mandate: the signature field is left out", "kind": "mandate", "input": {"spec_version": "0.1", "mandate_id": "mdt_vectorMandate01", "human_confirmation": "always", "limits": {"max_price_increase_pct": 7.5}, "signature": {"alg": "ES256", "key_id": "k1", "value": "ignored when hashing"}}, "hash": "sha256:ed5e13dc1ba8168665689b8122a0a4d34a2b475418004cc25f45ae87aa2b7b97"},
+    {"name": "event: the hash field is left out; floats and non-BMP keys follow RFC 8785", "kind": "event", "input": {"seq": 3, "at": "2026-10-02T08:01:12Z", "type": "quote_received", "actor": "provider", "payload": {"quote_id": "q_vector", "price": {"amount": "241.00", "currency": "GBP"}, "key_features": {"ratio": 0.1, "big": 1e+21, "😀": "emoji key", "דּ": "sorts after the emoji"}}, "prev_hash": "sha256:abababababababababababababababababababababababababababababababab", "hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}, "hash": "sha256:37d5a9215e9c20cff201a4365fdb53ac00f6935cd48c07227d824865f93e557e"}
+  ]
+}

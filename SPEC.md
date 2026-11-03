@@ -4,7 +4,7 @@ This document explains every field in the two a-witness formats, the **mandate**
 
 The JSON Schemas in [`schemas/`](schemas/) are the machine-readable definition. Where this document and a schema disagree, that is a bug; please open an issue.
 
-> **Status: draft, not production ready.** Signatures are placeholders and canonicalisation is a stand-in (see [Hashing](#hashing)). Both are replaced in Phase 2 of the [roadmap](ROADMAP.md). Field names may still change before v1.0.
+> **Status: draft, not production ready.** Signatures are placeholders until later in Phase 2 of the [roadmap](ROADMAP.md) (see [Signatures](#signatures)). Field names may still change before v1.0.
 
 **Contents:** [Words used here](#words-used-here) · [Conventions](#conventions) · [Mandate](#mandate) · [Trace](#trace) · [Event types](#event-types) · [Rules across documents](#rules-across-documents) · [Hashing](#hashing) · [Verifying](#verifying) · [Personal data](#personal-data) · [Versioning](#versioning)
 
@@ -363,7 +363,7 @@ Something went wrong. Recording errors honestly is part of the record: in the `h
 
 ## Rules across documents
 
-These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted.
+These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted. The Go reference implementation, `witness.Verify`, enforces rules 1 to 8.
 
 | # | Rule | Checked in v0.1 |
 |---|---|---|
@@ -399,23 +399,25 @@ Hashes are what make a trace tamper-evident. They need to be computed identicall
 
 Every hash is written as `sha256:` followed by the SHA-256 digest in lowercase hex.
 
-### Canonical JSON in v0.1
+### Canonical JSON
 
-The same JSON value can be written in many ways (key order, spacing), so it is converted to one canonical form before hashing. v0.1 uses a simple stand-in for [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785), which replaces it in Phase 2:
+The same JSON value can be written in many ways (key order, spacing), so it is converted to one canonical form before hashing: the JSON Canonicalization Scheme, [RFC 8785](https://www.rfc-editor.org/rfc/rfc8785). In short:
 
-1. Object keys sorted by Unicode code point, at every level.
+1. Object keys sorted by their UTF-16 code units, at every level.
 2. No whitespace: `,` between items and `:` between key and value.
-3. Strings escaped as in RFC 8259 JSON, with non-ASCII characters written as literal UTF-8, not `\u` escapes. Control characters use the short escapes (`\n`, `\t` and so on) where they exist and `\u00xx` with lowercase hex otherwise.
-4. The result encoded as UTF-8.
+3. Strings escape only the quote, the backslash and control characters. Control characters use the short escapes (`\n`, `\t` and so on) where they exist and `\u00xx` with lowercase hex otherwise. Everything else, including non-ASCII, is literal UTF-8.
+4. Numbers are IEEE 754 doubles, written as JavaScript writes them: `1e+21`, `0.000001`, `4.5`.
+5. The result encoded as UTF-8.
 
-This matches Python's `json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=False)`, which is what [`scripts/chain.py`](scripts/chain.py) does.
+RFC 8785 is the definition; the list above is a summary. Input must be strict ([I-JSON](https://www.rfc-editor.org/rfc/rfc7493)): an implementation **must** refuse duplicate keys, invalid UTF-8, unpaired surrogate escapes such as `"\ud800"`, and numbers too large for a double. Accepting them would let two different inputs share a hash.
 
-For the documents this spec defines, the v0.1 form and RFC 8785 give the same bytes. Two cases could differ, so producers should avoid both:
+Because numbers are doubles, integers beyond 2<sup>53</sup> lose precision. Money and percentages are strings for this reason, and producers should keep any other numbers small and exact.
 
-- **Non-integer numbers.** Money and percentages are strings for this reason. The one numeric field that could hold a fraction, `max_price_increase_pct`, should be a whole number or have at most two decimal places.
-- **Non-ASCII object keys.** v0.1 sorts by code point and RFC 8785 by UTF-16 code unit. All keys defined here are ASCII; extension fields in payloads should be too.
+Implementations: Go, [`witness/canon`](witness/canon); Python, the [`rfc8785`](https://pypi.org/project/rfc8785/) library via [`scripts/chain.py`](scripts/chain.py).
 
-Until Phase 2 publishes test vectors, the files in [`examples/`](examples/) serve as them: an implementation that reproduces their hashes is computing correctly.
+### Test vectors
+
+[`testdata/vectors/`](testdata/vectors/) holds language-neutral vectors for canonical JSON (including inputs that must be rejected), number formatting, and each kind of hash, with notes on using them. The files in [`examples/`](examples/) are vectors too: an implementation that verifies them is hashing correctly.
 
 ### What the chain does and does not prove
 

@@ -26,6 +26,24 @@ echo "== examples are reproducible from scripts/make_examples.py"
 git diff --exit-code -- examples/
 echo "ok      examples match the generator"
 
+echo "== test vectors are reproducible from their generators"
+"$PY" scripts/make_vectors.py >/dev/null
+node scripts/make_number_vectors.mjs >/dev/null
+git diff --exit-code -- testdata/vectors/
+echo "ok      vectors match the generators"
+
+echo "== the Python implementation agrees with JavaScript on number formatting"
+"$PY" - <<'EOF'
+import json, struct, sys
+sys.path.insert(0, "scripts")
+from chain import canon
+vectors = json.load(open("testdata/vectors/numbers.json"))["vectors"]
+wrong = [v for v in vectors if canon(struct.unpack(">d", bytes.fromhex(v["bits"]))[0]).decode() != v["output"]]
+for v in wrong[:5]:
+    print("  ", v["bits"], "wanted", v["output"])
+sys.exit(f"not ok  {len(wrong)} of {len(vectors)} numbers differ" if wrong else print(f"ok      all {len(vectors)} numbers match"))
+EOF
+
 echo "== the passing examples pass"
 "$PY" scripts/validate.py "$M" "$T"
 "$PY" scripts/validate.py examples/fixed-rate-savings-switch.mandate.json examples/fixed-rate-savings-switch.trace.json

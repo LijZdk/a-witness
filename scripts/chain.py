@@ -1,16 +1,16 @@
-"""Hashing shared by make_examples.py and validate.py.
+"""Hashing shared by make_examples.py, make_vectors.py and validate.py.
 
-v0.1 canonicalisation is sorted-key compact JSON, a stand-in for RFC 8785
-(JCS). The two agree for the documents in this repo because money is carried
-as strings and the only numbers are small integers. Phase 2 replaces this
-with real RFC 8785.
+Canonical JSON is RFC 8785 (JCS), via the rfc8785 library from Trail of
+Bits. The Go reference implementation is witness/canon; the two are held
+together by the test vectors in testdata/vectors/. See SPEC.md, "Hashing".
 """
 import hashlib
-import json
+
+import rfc8785
 
 
 def canon(obj) -> bytes:
-    return json.dumps(obj, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return rfc8785.dumps(obj)
 
 
 def sha(obj) -> str:
@@ -19,7 +19,8 @@ def sha(obj) -> str:
 
 
 def sha_text(text: str) -> str:
-    """Hash of raw text, used to reference documents and utterances without storing them."""
+    """Hash of raw text (its UTF-8 bytes, no normalisation), used to reference
+    documents and utterances without storing them."""
     return "sha256:" + hashlib.sha256(text.encode()).hexdigest()
 
 

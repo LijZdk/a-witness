@@ -14,14 +14,15 @@ Please open an issue to discuss anything larger than a typo before writing a pul
 
 ```bash
 pip install -r requirements.txt
-scripts/check.sh
+scripts/check.sh      # scripts, examples and test vectors (needs Python and Node)
+go vet ./... && go test ./...
 ```
 
-`scripts/check.sh` is exactly what CI runs. It must pass before a pull request is merged.
+CI runs both, plus `gofmt` and `staticcheck`. All must pass before a pull request is merged.
 
 Ground rules:
 
-- **Never hand-edit files in `examples/`.** They carry a real hash chain, so a hand edit breaks it. Change `scripts/make_examples.py` and run it again; CI fails if the committed examples do not match what the script produces.
+- **Never hand-edit files in `examples/` or `testdata/vectors/`.** The examples carry a real hash chain, so a hand edit breaks it. Change the generator in `scripts/` and run it again; CI fails if the committed files differ from what the generators produce.
 - **Keep personal data out.** Examples use fictional, clearly fake people, firms and references. Documents and raw instructions are referenced by hash, never copied in.
 - **Plain English.** Schema descriptions and docs are read by non-engineers. Prefer short sentences and avoid jargon where a plain word works.
 

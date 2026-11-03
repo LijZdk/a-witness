@@ -1,0 +1,37 @@
+{
+  "description": "RFC 8785 canonicalisation. A case with \"output\" must produce exactly that text; a case with \"error\": true must be rejected. \"input_hex\" gives raw bytes where the bytes themselves are the problem.",
+  "generated_by": "scripts/make_vectors.py, using the rfc8785 Python library",
+  "vectors": [
+    {"name": "rfc8785 section 3.2.2 example", "input": "{\n  \"numbers\": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n  \"string\": \"\\u20ac$\\u000F\\u000aA'\\u0042\\u0022\\u005c\\\\\\\"\\/\",\n  \"literals\": [null, true, false]\n}", "output": "{\"literals\":[null,true,false],\"numbers\":[333333333.3333333,1e+30,4.5,0.002,1e-27],\"string\":\"€$\\u000f\\nA'B\\\"\\\\\\\\\\\"/\"}"},
+    {"name": "rfc8785 section 3.2.3 key sorting: UTF-16 order puts the emoji before U+FB33", "input": "{\n  \"\\u20ac\": \"Euro Sign\",\n  \"\\r\": \"Carriage Return\",\n  \"\\ufb33\": \"Hebrew Letter Dalet With Dagesh\",\n  \"1\": \"One\",\n  \"\\ud83d\\ude00\": \"Emoji: Grinning Face\",\n  \"\\u0080\": \"Control\",\n  \"\\u00f6\": \"Latin Small Letter O With Diaeresis\"\n}", "output": "{\"\\r\":\"Carriage Return\",\"1\":\"One\",\"\":\"Control\",\"ö\":\"Latin Small Letter O With Diaeresis\",\"€\":\"Euro Sign\",\"😀\":\"Emoji: Grinning Face\",\"דּ\":\"Hebrew Letter Dalet With Dagesh\"}"},
+    {"name": "whitespace is removed and nested keys sorted", "input": " { \"b\" : [ 1 , { \"d\" : 1 , \"c\" : 2 } ] , \"a\" : { } } ", "output": "{\"a\":{},\"b\":[1,{\"c\":2,\"d\":1}]}"},
+    {"name": "empty object", "input": "{}", "output": "{}"},
+    {"name": "empty array", "input": "[]", "output": "[]"},
+    {"name": "top-level string", "input": "\"x\"", "output": "\"x\""},
+    {"name": "top-level number", "input": "3", "output": "3"},
+    {"name": "top-level literal", "input": "true", "output": "true"},
+    {"name": "control characters: short escapes where they exist, lowercase \\u00xx otherwise", "input": "\"\\u0000\\u0008\\u0009\\u000a\\u000c\\u000d\\u001f\"", "output": "\"\\u0000\\b\\t\\n\\f\\r\\u001f\""},
+    {"name": "DEL, U+2028 and non-ASCII are written literally, solidus unescaped", "input": "\"\\u007f \\u2028 caf\\u00e9 \\/\"", "output": "\"   café /\""},
+    {"name": "literal UTF-8 input stays literal", "input": "\"café €\"", "output": "\"café €\""},
+    {"name": "number forms: exponent, trailing zeros, negative zero", "input": "[1E2, 1.0, 0.10, -0, -0.0, 1e21, 1e-7, 1e-6]", "output": "[100,1,0.1,0,0,1e+21,1e-7,0.000001]"},
+    {"name": "integers beyond 2^53 are read as doubles", "input": "[9007199254740993, 123456789012345678901234567890]", "output": "[9007199254740992,1.2345678901234568e+29]"},
+    {"name": "underflow reads as zero, as in JavaScript", "input": "1e-400", "output": "0"},
+    {"name": "an a-witness event", "input": "{\"seq\": 0, \"at\": \"2026-10-02T08:00:00Z\", \"type\": \"intent_captured\", \"actor\": \"agent\", \"payload\": {\"summary\": \"Renewal came in at 389 GBP.\", \"utterance_hash\": \"sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff\"}, \"prev_hash\": \"sha256:0000000000000000000000000000000000000000000000000000000000000000\"}", "output": "{\"actor\":\"agent\",\"at\":\"2026-10-02T08:00:00Z\",\"payload\":{\"summary\":\"Renewal came in at 389 GBP.\",\"utterance_hash\":\"sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff\"},\"prev_hash\":\"sha256:0000000000000000000000000000000000000000000000000000000000000000\",\"seq\":0,\"type\":\"intent_captured\"}"},
+    {"name": "duplicate object key", "input": "{\"a\": 1, \"a\": 2}", "error": true},
+    {"name": "duplicate key after unescaping", "input": "{\"a\": 1, \"\\u0061\": 2}", "error": true},
+    {"name": "unpaired high surrogate", "input": "\"\\ud800\"", "error": true},
+    {"name": "unpaired low surrogate", "input": "\"\\udc00\"", "error": true},
+    {"name": "high surrogate followed by a non-surrogate", "input": "\"\\ud800\\u0041\"", "error": true},
+    {"name": "surrogate pair in the wrong order", "input": "\"\\ude00\\ud83d\"", "error": true},
+    {"name": "invalid UTF-8", "input_hex": "22ff22", "error": true},
+    {"name": "overlong UTF-8 encoding", "input_hex": "22c0af22", "error": true},
+    {"name": "number too large for a double", "input": "1e400", "error": true},
+    {"name": "NaN", "input": "NaN", "error": true},
+    {"name": "Infinity", "input": "Infinity", "error": true},
+    {"name": "two top-level values", "input": "{} {}", "error": true},
+    {"name": "trailing comma", "input": "[1,]", "error": true},
+    {"name": "leading zero", "input": "01", "error": true},
+    {"name": "single-quoted string", "input": "'x'", "error": true},
+    {"name": "empty input", "input": "", "error": true}
+  ]
+}

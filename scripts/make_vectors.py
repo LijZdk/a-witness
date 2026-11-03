@@ -1,0 +1,141 @@
+"""Generate testdata/vectors/canon.json and testdata/vectors/hashes.json.
+
+Expected outputs come from the Python implementation (chain.py, which uses
+the rfc8785 library), never from the Go code they test. Number formatting
+vectors come from JavaScript instead; see make_number_vectors.mjs.
+
+Run with: python scripts/make_vectors.py
+"""
+import json
+from pathlib import Path
+
+from chain import canon, event_hash, mandate_hash, sha_text
+
+OUT = Path(__file__).resolve().parent.parent / "testdata" / "vectors"
+
+
+def parse(text):
+    # RFC 8785 reads every number as an IEEE 754 double, integers included.
+    return json.loads(text, parse_int=float)
+
+
+VALID = [
+    ("rfc8785 section 3.2.2 example",
+     '{\n  "numbers": [333333333.33333329, 1E30, 4.50, 2e-3, 0.000000000000000000000000001],\n'
+     '  "string": "\\u20ac$\\u000F\\u000aA\'\\u0042\\u0022\\u005c\\\\\\"\\/",\n'
+     '  "literals": [null, true, false]\n}'),
+    ("rfc8785 section 3.2.3 key sorting: UTF-16 order puts the emoji before U+FB33",
+     '{\n  "\\u20ac": "Euro Sign",\n  "\\r": "Carriage Return",\n'
+     '  "\\ufb33": "Hebrew Letter Dalet With Dagesh",\n  "1": "One",\n'
+     '  "\\ud83d\\ude00": "Emoji: Grinning Face",\n  "\\u0080": "Control",\n'
+     '  "\\u00f6": "Latin Small Letter O With Diaeresis"\n}'),
+    ("whitespace is removed and nested keys sorted", ' { "b" : [ 1 , { "d" : 1 , "c" : 2 } ] , "a" : { } } '),
+    ("empty object", "{}"),
+    ("empty array", "[]"),
+    ("top-level string", '"x"'),
+    ("top-level number", "3"),
+    ("top-level literal", "true"),
+    ("control characters: short escapes where they exist, lowercase \\u00xx otherwise",
+     '"\\u0000\\u0008\\u0009\\u000a\\u000c\\u000d\\u001f"'),
+    ("DEL, U+2028 and non-ASCII are written literally, solidus unescaped", '"\\u007f \\u2028 caf\\u00e9 \\/"'),
+    ("literal UTF-8 input stays literal", '"café €"'),
+    ("number forms: exponent, trailing zeros, negative zero", "[1E2, 1.0, 0.10, -0, -0.0, 1e21, 1e-7, 1e-6]"),
+    ("integers beyond 2^53 are read as doubles", "[9007199254740993, 123456789012345678901234567890]"),
+    ("underflow reads as zero, as in JavaScript", "1e-400"),
+    ("an a-witness event",
+     '{"seq": 0, "at": "2026-10-02T08:00:00Z", "type": "intent_captured", "actor": "agent",'
+     ' "payload": {"summary": "Renewal came in at 389 GBP.", "utterance_hash":'
+     ' "sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff"},'
+     ' "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}'),
+]
+
+# Inputs a conforming implementation must reject. "input" is the JSON text;
+# "input_hex" is used instead where the bytes themselves are the problem.
+INVALID = [
+    ("duplicate object key", {"input": '{"a": 1, "a": 2}'}),
+    ("duplicate key after unescaping", {"input": '{"a": 1, "\\u0061": 2}'}),
+    ("unpaired high surrogate", {"input": '"\\ud800"'}),
+    ("unpaired low surrogate", {"input": '"\\udc00"'}),
+    ("high surrogate followed by a non-surrogate", {"input": '"\\ud800\\u0041"'}),
+    ("surrogate pair in the wrong order", {"input": '"\\ude00\\ud83d"'}),
+    ("invalid UTF-8", {"input_hex": "22ff22"}),
+    ("overlong UTF-8 encoding", {"input_hex": "22c0af22"}),
+    ("number too large for a double", {"input": "1e400"}),
+    ("NaN", {"input": "NaN"}),
+    ("Infinity", {"input": "Infinity"}),
+    ("two top-level values", {"input": "{} {}"}),
+    ("trailing comma", {"input": "[1,]"}),
+    ("leading zero", {"input": "01"}),
+    ("single-quoted string", {"input": "'x'"}),
+    ("empty input", {"input": ""}),
+]
+
+MANDATE = {
+    "spec_version": "0.1",
+    "mandate_id": "mdt_vectorMandate01",
+    "human_confirmation": "always",
+    "limits": {"max_price_increase_pct": 7.5},
+    "signature": {"alg": "ES256", "key_id": "k1", "value": "ignored when hashing"},
+}
+
+EVENT = {
+    "seq": 3,
+    "at": "2026-10-02T08:01:12Z",
+    "type": "quote_received",
+    "actor": "provider",
+    "payload": {
+        "quote_id": "q_vector",
+        "price": {"amount": "241.00", "currency": "GBP"},
+        "key_features": {"ratio": 0.1, "big": 1e21, "\U0001f600": "emoji key", "דּ": "sorts after the emoji"},
+    },
+    "prev_hash": "sha256:" + "ab" * 32,
+    "hash": "sha256:" + "00" * 32,
+}
+
+HASHES = [
+    {"name": "text: consent wording", "kind": "text",
+     "input": "I allow my agent to renew or switch my home insurance within these limits."},
+    {"name": "text: empty", "kind": "text", "input": ""},
+    {"name": "text: non-ASCII is hashed as UTF-8 with no normalisation", "kind": "text", "input": "café"},
+    {"name": "text: decomposed form hashes differently", "kind": "text", "input": "café"},
+    {"name": "mandate: the signature field is left out", "kind": "mandate", "input": MANDATE},
+    {"name": "event: the hash field is left out; floats and non-BMP keys follow RFC 8785", "kind": "event", "input": EVENT},
+]
+
+
+def hash_of(case):
+    kind, value = case["kind"], case["input"]
+    if kind == "text":
+        return sha_text(value)
+    if kind == "mandate":
+        return mandate_hash(value)
+    return event_hash(value)
+
+
+def write(name, header, items):
+    lines = ",\n".join("    " + json.dumps(i, ensure_ascii=False) for i in items)
+    head = json.dumps(header, indent=2, ensure_ascii=False)[:-2]
+    (OUT / name).write_text(f'{head},\n  "vectors": [\n{lines}\n  ]\n}}\n')
+
+
+def main():
+    OUT.mkdir(parents=True, exist_ok=True)
+    canon_cases = [{"name": n, "input": t, "output": canon(parse(t)).decode()} for n, t in VALID]
+    canon_cases += [{"name": n, **c, "error": True} for n, c in INVALID]
+    write("canon.json", {
+        "description": "RFC 8785 canonicalisation. A case with \"output\" must produce exactly that text; "
+                       "a case with \"error\": true must be rejected. \"input_hex\" gives raw bytes where "
+                       "the bytes themselves are the problem.",
+        "generated_by": "scripts/make_vectors.py, using the rfc8785 Python library",
+    }, canon_cases)
+    write("hashes.json", {
+        "description": "a-witness hashes (SPEC.md, \"Hashing\"). kind \"text\": SHA-256 of the UTF-8 bytes. "
+                       "kind \"mandate\": of the canonical JSON without \"signature\". kind \"event\": of the "
+                       "canonical JSON without \"hash\".",
+        "generated_by": "scripts/make_vectors.py, using scripts/chain.py",
+    }, [{**c, "hash": hash_of(c)} for c in HASHES])
+    print(f"wrote {len(canon_cases)} canon and {len(HASHES)} hash vectors")
+
+
+if __name__ == "__main__":
+    main()

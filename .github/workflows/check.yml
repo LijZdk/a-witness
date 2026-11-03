@@ -8,7 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  check:
+  # Python scripts, examples and test vectors: everything in scripts/check.sh.
+  scripts:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,7 +17,33 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
       - run: pip install -r requirements.txt
       - run: scripts/check.sh
         env:
           PYTHON: python
+
+  # The Go reference implementation, on the oldest Go that go.mod supports.
+  go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - name: gofmt
+        run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
+      - run: go vet ./...
+      - run: go test ./...
+
+  # staticcheck needs a recent Go, so it runs on the current stable release.
+  staticcheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
