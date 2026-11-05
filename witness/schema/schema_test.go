@@ -184,6 +184,11 @@ func TestDateTimeFormat(t *testing.T) {
 		{"2026-10-01T09:00:00.123456Z", true},
 		{"2026-10-01T09:00:00+01:00", true},
 		{"2026-10-01T09:00:00-05:30", true},
+		{"2026-10-01T09:00:00+23:59", true},
+		{"2026-10-01T09:00:00-12:00", true},
+		{"2026-10-01T09:00:00+24:00", false},
+		{"2026-10-01T09:00:00+00:60", false},
+		{"2026-10-01T09:00:00-00:60", false},
 		{"2026-12-31T23:59:60Z", false}, // leap second: time.RFC3339 refuses it
 		{"2026-10-01t09:00:00Z", false}, // known gap: Python accepts lower case
 		{"2026-10-01T09:00:00z", false}, // known gap: Python accepts lower case
@@ -223,6 +228,16 @@ func TestURIFormat(t *testing.T) {
 		{"https://wallet.example/a%20b?x=1&y=2#frag", true},
 		{"urn:isbn:0451450523", true},
 		{"javascript:x", true}, // a valid URI; see validateURI
+		{"http://[::1]/x", true},
+		{"http://u@[::1]:8080/x", true},
+		{"https://example.com/a?b=c#d", true},
+		{"http://a#b#c", false},
+		{"a:b#c#d", false},
+		{"x:[", false},
+		{"http://a/b[c]", false},
+		{"http://a]b/", false},
+		{"http://[::1/x", false},
+		{"x:a?b://[c]/", false},
 		{"/mandates/m1/status", false},
 		{"wallet.example/status", false},
 		{"https://wallet.example/a b", false},
@@ -382,21 +397,46 @@ func TestTruncate(t *testing.T) {
 }
 
 func TestViolationsAreSorted(t *testing.T) {
+	// Paths that sort differently as strings than as tokens ("events/10"
+	// before "events/2" as strings), and two messages at one path.
 	tr := parseExample(t, "home-insurance-switch", "trace")
-	tr["journey"].(map[string]any)["started_at"] = "nope"
+	evs := tr["events"].([]any)
+	if len(evs) < 12 {
+		t.Fatal("test premise: the example has at least 12 events")
+	}
+	for _, i := range []int{2, 10} {
+		evs[i].(map[string]any)["at"] = "nope"
+	}
+	// Two violations at one path: a missing property and an unexpected one
 	tr["journey"].(map[string]any)["product_class"] = "not_a_class"
+	tr["journey"].(map[string]any)["zzz"] = true
+	delete(tr["journey"].(map[string]any), "action")
 	delete(tr, "seal")
-	vs := ValidateTrace(tr)
-	if len(vs) < 3 {
-		t.Fatalf("got %v", strs(vs))
+
+	var want []string
+	for n := 0; n < 50; n++ {
+		got := strs(ValidateTrace(tr))
+		if n == 0 {
+			want = got
+			t.Logf("violations: %q", got)
+		}
+		if strings.Join(got, "\n") != strings.Join(want, "\n") {
+			t.Fatalf("run %d differs:\n%q\nvs\n%q", n, got, want)
+		}
 	}
-	var paths []string
-	for _, v := range vs {
+	// Order is by path tokens (numeric segments compared as text, element
+	// by element), then message.
+	var paths, msgs []string
+	for _, v := range ValidateTrace(tr) {
 		paths = append(paths, v.Path)
+		msgs = append(msgs, v.Message)
 	}
-	want := []string{"<root>", "journey/product_class", "journey/started_at"}
-	if strings.Join(paths, ",") != strings.Join(want, ",") {
-		t.Errorf("paths %v, want %v", paths, want)
+	wantPaths := []string{"<root>", "events/10/at", "events/2/at", "journey", "journey", "journey/product_class"}
+	if strings.Join(paths, ",") != strings.Join(wantPaths, ",") {
+		t.Fatalf("paths %v, want %v", paths, wantPaths)
+	}
+	if !(msgs[3] < msgs[4]) {
+		t.Errorf("messages at journey not in order: %q", msgs[3:5])
 	}
 }
 
