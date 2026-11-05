@@ -217,10 +217,20 @@
       "payload": {
         "method": "passkey",
         "decision": "approved",
-        "shown_summary_hash": "sha256:b4253799e6c4eb8f0998574ebcce44e9f28c1f2974d4889ca2f50cf780d047d8"
+        "shown_summary_hash": "sha256:b4253799e6c4eb8f0998574ebcce44e9f28c1f2974d4889ca2f50cf780d047d8",
+        "quote_id": "q_newco",
+        "amount": {
+          "amount": "298.00",
+          "currency": "GBP"
+        },
+        "principal_signature": {
+          "alg": "EdDSA",
+          "key_id": "https://wallet.example/.well-known/jwks.json#prn_a91f0c3e",
+          "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vd2FsbGV0LmV4YW1wbGUvLndlbGwta25vd24vandrcy5qc29uI3Bybl9hOTFmMGMzZSIsInR5cCI6ImEtd2l0bmVzcy1jb25maXJtYXRpb24ifQ..zTaFcmSZhEy85HUQPzR-mBSngKShM6Or0Y8Lcs3srb1xb9e2q0sPBfKE3a17XGTq7yCnPbREWLb8FOQbF67RDw"
+        }
       },
       "prev_hash": "sha256:1f4722b24e544d87841306dac88a5185dc38c1780eab523ca4da9084ba69e6f1",
-      "hash": "sha256:595dae59ea0a9d532bb5f826e8efc8ef97dea2a2c803ba5b6c97c17d85953a38"
+      "hash": "sha256:64de04938452263b70f277afdded5687d7e13731ef79d662ca5789c3f6456cd2"
     },
     {
       "seq": 10,
@@ -236,8 +246,8 @@
         },
         "payment_mandate_ref": "ap2:pm_example_123"
       },
-      "prev_hash": "sha256:595dae59ea0a9d532bb5f826e8efc8ef97dea2a2c803ba5b6c97c17d85953a38",
-      "hash": "sha256:a23dedf91517965444271c69d1da72d94bb593fb168e67394b29bbe6263d5243"
+      "prev_hash": "sha256:64de04938452263b70f277afdded5687d7e13731ef79d662ca5789c3f6456cd2",
+      "hash": "sha256:63612f4d84149ea30488fb44fc636a7fb4d622dad81ce62f8440717f8868afa6"
     },
     {
       "seq": 11,
@@ -249,8 +259,8 @@
         "detail": "14 day cooling-off period applies.",
         "deadline": "2026-10-16T23:59:59Z"
       },
-      "prev_hash": "sha256:a23dedf91517965444271c69d1da72d94bb593fb168e67394b29bbe6263d5243",
-      "hash": "sha256:d166f9eeb55b49ee5cba1004acfa08df9969ca68986b27bc738a93b82e488161"
+      "prev_hash": "sha256:63612f4d84149ea30488fb44fc636a7fb4d622dad81ce62f8440717f8868afa6",
+      "hash": "sha256:a8703e9dfff8d092f9ed931bf8612ec1170e7c29154d90430f2a44f9853425d6"
     }
   ],
   "outcome_evidence": {
@@ -284,20 +294,20 @@
     }
   },
   "seal": {
-    "final_event_hash": "sha256:d166f9eeb55b49ee5cba1004acfa08df9969ca68986b27bc738a93b82e488161",
+    "final_event_hash": "sha256:a8703e9dfff8d092f9ed931bf8612ec1170e7c29154d90430f2a44f9853425d6",
     "sealed_at": "2026-10-02T08:14:30Z",
     "signatures": [
       {
         "signer": "agent",
         "alg": "EdDSA",
         "key_id": "https://agent.example/.well-known/jwks.json#home-helper",
-        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vYWdlbnQuZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jaG9tZS1oZWxwZXIiLCJ0eXAiOiJhLXdpdG5lc3Mtc2VhbCJ9..j6BgFB0T37sI8Z0tAaZQs6DIL8fbx1QXGvAhEYHYJSGIYhy4-rdYAIjekpUrZWnMec-Qk0OOAc282B8VBaQ_CA"
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vYWdlbnQuZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jaG9tZS1oZWxwZXIiLCJ0eXAiOiJhLXdpdG5lc3Mtc2VhbCJ9..tkNCQTvTPTn0vpi9xik3xDjq8iYTFqKhO1WJ0JUbq0Jj7njSvGDN8TQXP5hLfYthK10IP-oYHGy_5g9ibsoBAA"
       },
       {
         "signer": "provider",
         "alg": "EdDSA",
         "key_id": "https://newco.example/.well-known/jwks.json#seal-2026",
-        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vbmV3Y28uZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jc2VhbC0yMDI2IiwidHlwIjoiYS13aXRuZXNzLXNlYWwifQ..cH0DDzAE19i3xyUgiBWLKXeIk6LIqoeK4gNQt65MD_M4_vnKGDyk0lIKh2ANo3TtC3WxV-e5wSmSIOfrS50tDA"
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vbmV3Y28uZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jc2VhbC0yMDI2IiwidHlwIjoiYS13aXRuZXNzLXNlYWwifQ..HeN0wBuayX1cDeakVWNWG6yJhN-9tv9uR7IRfOiCNP6a7oWBItaZNlo8Ya9IfXvLP4jysjrtCfqAirDH1_hLCw"
       }
     ]
   }

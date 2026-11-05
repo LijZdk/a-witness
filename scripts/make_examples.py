@@ -6,7 +6,8 @@ is whether the journey it records obeyed the mandate.
   home-insurance-switch            PASSES. Sam's renewal arrives 25% higher.
                                    The agent shops around, finds a cheaper
                                    policy that meets Sam's must-haves, asks
-                                   Sam to confirm, then switches.
+                                   Sam to confirm, then switches. Sam's device
+                                   signs his yes (a-witness-confirmation).
 
   home-insurance-no-confirmation   FAILS. Same shopping, but Sam never answers
                                    the request to approve. With the quote about
@@ -17,7 +18,8 @@ is whether the journey it records obeyed the mandate.
                                    rate bond is maturing into a poor rollover
                                    rate. The agent moves the money to a better
                                    FSCS protected bond, ruling out a higher
-                                   rate that is not protected.
+                                   rate that is not protected. Jo's yes is
+                                   not signed: the agent's claim, as before.
 
 Never hand-edit the files in examples/. Change this script and run it again.
 
@@ -31,7 +33,8 @@ import json
 from pathlib import Path
 
 from chain import event_hash, mandate_hash as hash_mandate, sha_text
-from jws import MANDATE_TYP, SEAL_TYP, example_key, mandate_payload, public_jwk, seal_payload, sign
+from jws import (CONFIRMATION_TYP, MANDATE_TYP, SEAL_TYP, confirmation_payload, example_key, mandate_payload,
+                 public_jwk, seal_payload, sign)
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "examples"
@@ -253,17 +256,28 @@ def write(name, mandate, trace):
     print(f"wrote {name}; mandate_hash {trace['mandate_ref']['mandate_hash']}")
 
 
+def signed_confirmation(holder, trace_id, mandate, payload, previous_ref=""):
+    """The payload with the principal's signature on it: what Sam's device does when he taps approve.
+    The signature covers the mandate hash, the trace id, the ref of the signed confirmation before this
+    one and the payload (SPEC.md, "Signed confirmations")."""
+    body = confirmation_payload(trace_id, hash_mandate(mandate), previous_ref, payload)
+    return {**payload, "principal_signature": signature(holder, CONFIRMATION_TYP, body)}
+
+
 def switch_example():
-    """The good journey: Sam approves before the agent buys."""
+    """The good journey: Sam approves before the agent buys, and signs his yes."""
     mandate = home_mandate("mdt_7Hq2Lk9Xw3Pz")
+    trace_id = "trc_Rn4Vb8Ty2Mk6"
     raw = shopping_events() + [
-        ("2026-10-02T08:14:02Z", "human_confirmation", "principal", {
+        ("2026-10-02T08:14:02Z", "human_confirmation", "principal", signed_confirmation("sam", trace_id, mandate, {
             "method": "passkey",
             "decision": "approved",
             "shown_summary_hash": sha_text("Switch to NewCo Home Plus, 298 GBP/yr, excess 200 GBP. Approve?"),
-        }),
+            "quote_id": "q_newco",
+            "amount": {"amount": "298.00", "currency": "GBP"},
+        })),
     ] + purchase_events(("2026-10-02T08:14:20Z", "2026-10-02T08:14:25Z"))
-    trace = build_trace("trc_Rn4Vb8Ty2Mk6", mandate, raw, "2026-10-02T08:14:30Z", "home-helper", "newco", outcome_evidence={
+    trace = build_trace(trace_id, mandate, raw, "2026-10-02T08:14:30Z", "home-helper", "newco", outcome_evidence={
         "products_and_services": {"event_seqs": [4, 5], "note": "Selected product met all stated requirements."},
         "price_and_value": {"event_seqs": [1, 6, 8], "note": "Renewal rise caught and a cheaper compliant option chosen."},
         "consumer_understanding": {"event_seqs": [7, 9], "note": "IPID summarised and shown before confirmation."},

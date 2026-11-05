@@ -1,0 +1,1 @@
+event 9 (human_confirmation): the principal approved an AER of 4.35 on quote 'q_newco', but that quote offers no AER

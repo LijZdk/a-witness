@@ -42,9 +42,10 @@ func TestCheckExamples(t *testing.T) {
 			if len(r.Integrity) != 0 || len(r.Rules) != 0 || len(r.Warnings) != 0 || !r.RulesRan || r.Signatures != SignaturesValid {
 				t.Fatalf("unexpected report: %+v", r)
 			}
-			// The examples are not signed by the principal, so the yes is the agent's claim.
-			if !hasNotChecked(r, 9, "the principal did not sign the seal") {
-				t.Errorf("the unsigned approval is not noted: %+v", r.NotChecked)
+			// Sam signed his yes (AW-36), so the switch example needs no note. Jo's yes is
+			// unsigned, and the seal is not signed by the principal either: the agent's claim.
+			if claim := hasNotChecked(r, 9, "the principal did not sign the seal"); claim != (name == "fixed-rate-savings-switch") {
+				t.Errorf("the agent's-claim note is %v for %s: %+v", claim, name, r.NotChecked)
 			}
 			for _, rule := range []int{11, 12, 13} {
 				if !hasNotChecked(r, rule, "") {

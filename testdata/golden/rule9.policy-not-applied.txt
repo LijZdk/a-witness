@@ -1,0 +1,1 @@
+the policy that only principal-signed approvals count was not applied, because human_confirmation is 'never'
