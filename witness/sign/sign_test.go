@@ -450,6 +450,9 @@ func TestJWKSFetcherWaiterCancelReturnsPromptly(t *testing.T) {
 		if !errors.Is(err, context.Canceled) {
 			t.Errorf("waiter: got %v, want context.Canceled", err)
 		}
+		if err != nil && !strings.HasPrefix(err.Error(), "sign: fetching "+srv.URL) {
+			t.Errorf("waiter error %q lacks the \"sign: fetching <url>\" prefix", err)
+		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("waiter did not return after its ctx was cancelled")
 	}
@@ -486,6 +489,89 @@ func TestJWKSFetcherCachedLookupIgnoresCancelledCtx(t *testing.T) {
 		if !pub.Equal(got) {
 			t.Fatal("wrong key")
 		}
+	}
+}
+
+// panicOnce is a RoundTripper whose first call blocks until released and then
+// panics; later calls go to next.
+type panicOnce struct {
+	next    http.RoundTripper
+	calls   atomic.Int32
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (p *panicOnce) RoundTrip(r *http.Request) (*http.Response, error) {
+	if p.calls.Add(1) == 1 {
+		close(p.entered)
+		<-p.release
+		panic("transport exploded")
+	}
+	return p.next.RoundTrip(r)
+}
+
+func TestJWKSFetcherPanicDoesNotWedgeURL(t *testing.T) {
+	body, pub := jwksBody(t, "k1")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	}))
+	defer srv.Close()
+	rt := &panicOnce{next: srv.Client().Transport, entered: make(chan struct{}), release: make(chan struct{})}
+	f := &JWKSFetcher{Client: &http.Client{Transport: rt}}
+	id := srv.URL + "/jwks.json#k1"
+
+	leaderDone := make(chan any, 1)
+	go func() {
+		defer func() { leaderDone <- recover() }()
+		f.PublicKey(context.Background(), id)
+	}()
+	select {
+	case <-rt.entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fetch never started")
+	}
+
+	waiterDone := make(chan error, 1)
+	go func() { _, err := f.PublicKey(context.Background(), id); waiterDone <- err }()
+	time.Sleep(50 * time.Millisecond) // let the waiter join the fetch
+	close(rt.release)
+
+	select {
+	case p := <-leaderDone:
+		if p == nil {
+			t.Error("the panic was swallowed, want it to propagate")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not return")
+	}
+	select {
+	case err := <-waiterDone:
+		if err != nil {
+			t.Errorf("waiter: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter hung after the fetch panicked")
+	}
+
+	type result struct {
+		key any
+		err error
+	}
+	again := make(chan result, 1)
+	go func() {
+		k, err := f.PublicKey(context.Background(), id)
+		again <- result{k, err}
+	}()
+	select {
+	case r := <-again:
+		if r.err != nil {
+			t.Fatalf("lookup after a panicked fetch: %v", r.err)
+		}
+		if !pub.Equal(r.key.(ed25519.PublicKey)) {
+			t.Error("wrong key")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("lookup after a panicked fetch hung: the URL is wedged")
 	}
 }
 

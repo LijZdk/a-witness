@@ -163,16 +163,7 @@ func (f *JWKSFetcher) fetch(ctx context.Context, address string) (KeySet, error)
 		f.mu.Unlock()
 
 		if !ok {
-			// This caller owns the fetch. The lock is not held here.
-			e.set, e.err = f.get(ctx, address)
-			if e.err != nil {
-				e.ctxEnded = ctx.Err() != nil
-				f.mu.Lock()
-				delete(f.entries, address)
-				f.mu.Unlock()
-			}
-			close(e.done)
-			return e.set, e.err
+			return f.lead(ctx, address, e)
 		}
 
 		// A finished entry is used without consulting ctx.
@@ -182,20 +173,45 @@ func (f *JWKSFetcher) fetch(ctx context.Context, address string) (KeySet, error)
 			select {
 			case <-e.done:
 			case <-ctx.Done():
-				return nil, ctx.Err()
+				return nil, fmt.Errorf("sign: fetching %s: %w", address, ctx.Err())
 			}
 		}
 		if e.err != nil && e.ctxEnded {
-			// The fetcher's own context ended, which says nothing about
-			// this caller. Give up only if this caller's ctx ended too;
-			// otherwise look the entry up again and fetch with our own.
+			// The fetcher's own context ended (or its fetch never
+			// finished), which says nothing about this caller. Give up
+			// only if this caller's ctx ended too; otherwise look the
+			// entry up again and fetch with our own.
 			if err := ctx.Err(); err != nil {
-				return nil, err
+				return nil, fmt.Errorf("sign: fetching %s: %w", address, err)
 			}
 			continue
 		}
 		return e.set, e.err
 	}
+}
+
+// lead runs the fetch for an entry this caller created. Whatever way it
+// exits, including a panic or runtime.Goexit, the entry is finished: removed
+// unless the fetch succeeded, given an error if it has none, and done is
+// closed, so no later caller waits on it forever. A panic keeps propagating.
+func (f *JWKSFetcher) lead(ctx context.Context, address string, e *jwksEntry) (KeySet, error) {
+	completed := false
+	defer func() {
+		if !completed {
+			e.set = nil
+			e.err = fmt.Errorf("sign: fetching %s: the fetch did not complete", address)
+		}
+		if e.err != nil {
+			e.ctxEnded = !completed || ctx.Err() != nil
+			f.mu.Lock()
+			delete(f.entries, address)
+			f.mu.Unlock()
+		}
+		close(e.done)
+	}()
+	e.set, e.err = f.get(ctx, address)
+	completed = true
+	return e.set, e.err
 }
 
 // get does the network fetch for one URL.
