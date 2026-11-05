@@ -19,6 +19,7 @@ from chain import canon, without
 
 MANDATE_TYP = "a-witness-mandate"
 SEAL_TYP = "a-witness-seal"
+CONFIRMATION_TYP = "a-witness-confirmation"
 
 
 def b64(data: bytes) -> str:
@@ -43,6 +44,19 @@ def mandate_payload(mandate: dict) -> bytes:
 def seal_payload(trace: dict) -> bytes:
     """A seal signature covers the whole trace except the seal's signatures."""
     return canon({**trace, "seal": without(trace["seal"], "signatures")})
+
+
+def confirmation_payload(trace_id: str, mandate_hash: str, previous_ref: str, payload: dict) -> bytes:
+    """What the principal signs on a human_confirmation (SPEC.md, "Signed confirmations"): the mandate hash
+    and trace id that tie the yes to one journey, the ref of the signed confirmation before it ("" if none),
+    and the event payload without its principal_signature. witness.ConfirmationPayload is the Go twin."""
+    return canon({"mandate_hash": mandate_hash, "trace_id": trace_id, "previous_ref": previous_ref,
+                  "payload": without(payload, "principal_signature")})
+
+
+def confirmation_ref(payload: bytes) -> str:
+    """The name of a signed confirmation: the hash of the bytes the principal signed, not of the signature."""
+    return "sha256:" + hashlib.sha256(payload).hexdigest()
 
 
 def example_key(name: str) -> ed25519.Ed25519PrivateKey:
