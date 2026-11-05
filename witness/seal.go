@@ -132,3 +132,123 @@ func SignSeal(trace map[string]any, s Signer) error {
 	seal["signatures"] = append(sigs, map[string]any{"signer": s.Role, "alg": s.Alg, "key_id": s.KeyID, "value": jws})
 	return nil
 }
+
+// ConfirmationTyp is the JWS "typ" of the principal's signature on a
+// human_confirmation (SPEC.md, "Signed confirmations"), so that it can never
+// pass as a mandate signature or a seal signature, or the other way round.
+const ConfirmationTyp = "a-witness-confirmation"
+
+// confirmationRequired are the payload fields, besides method and decision,
+// that a signed human_confirmation cannot do without.
+var confirmationRequired = []string{"shown_summary_hash", "quote_id", "amount"}
+
+// confirmationBytes is the RFC 8785 canonical JSON that the principal signs:
+// the mandate hash and trace id that tie the yes to one journey, the ref of the
+// signed confirmation before it (previousRef, "" if none) that fixes its place,
+// and the event payload without principal_signature.
+func confirmationBytes(mandateHash, traceID, previousRef string, payload map[string]any) ([]byte, error) {
+	return canon.Serialize(map[string]any{
+		"mandate_hash": mandateHash,
+		"trace_id":     traceID,
+		"previous_ref": previousRef,
+		"payload":      without(payload, "principal_signature"),
+	})
+}
+
+// ConfirmationRef names a signed confirmation: the SHA-256 of the bytes the
+// principal signed (see ConfirmationPayload), not of the signature.
+func ConfirmationRef(payload []byte) string { return HashBytes(payload) }
+
+// traceIdentity reads the two fields of a trace that a confirmation signature
+// ties the yes to.
+func traceIdentity(trace map[string]any) (mandateHash, traceID string, err error) {
+	ref, _ := trace["mandate_ref"].(map[string]any)
+	if mandateHash, _ = ref["mandate_hash"].(string); mandateHash == "" {
+		return "", "", errors.New("witness: the trace has no mandate_ref.mandate_hash to sign a confirmation against")
+	}
+	if traceID, _ = trace["trace_id"].(string); traceID == "" {
+		return "", "", errors.New("witness: the trace has no trace_id to sign a confirmation against")
+	}
+	return mandateHash, traceID, nil
+}
+
+// ConfirmationPayload is what the principal signs to confirm: the canonical
+// JSON of the trace's mandate_hash and trace_id, the confirmation_ref of the
+// latest signed human_confirmation already in the trace's events (or "" if
+// there is none), and the event payload without its principal_signature. The
+// payload must hold method, decision, shown_summary_hash, quote_id and amount.
+// seq, prev_hash and at are not signed.
+func ConfirmationPayload(trace map[string]any, payload map[string]any) ([]byte, error) {
+	mandateHash, traceID, err := traceIdentity(trace)
+	if err != nil {
+		return nil, err
+	}
+	for _, name := range append([]string{"method", "decision"}, confirmationRequired...) {
+		if _, ok := payload[name]; !ok {
+			return nil, fmt.Errorf("witness: a signed confirmation needs %s", name)
+		}
+	}
+	previous := ""
+	events, _ := trace["events"].([]any)
+	for _, e := range events {
+		ev, _ := e.(map[string]any)
+		p, _ := ev["payload"].(map[string]any)
+		if ev["type"] != "human_confirmation" || p == nil {
+			continue
+		}
+		if _, signed := p["principal_signature"]; !signed {
+			continue
+		}
+		b, err := confirmationBytes(mandateHash, traceID, previous, p)
+		if err != nil {
+			return nil, err
+		}
+		previous = ConfirmationRef(b)
+	}
+	return confirmationBytes(mandateHash, traceID, previous, payload)
+}
+
+// SignConfirmation signs the bytes from ConfirmationPayload as the principal.
+// The signer's role must be "principal"; its key must be the one that signed
+// the mandate, or a verifier refuses the confirmation. It returns the
+// signature object to set as the payload's principal_signature.
+func SignConfirmation(payload []byte, s Signer) (map[string]any, error) {
+	if s.Role != "principal" {
+		return nil, fmt.Errorf("witness: only the principal signs a confirmation, not role %q", s.Role)
+	}
+	jws, err := sign.Sign(s.Key, s.Alg, s.KeyID, ConfirmationTyp, payload)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]any{"alg": s.Alg, "key_id": s.KeyID, "value": jws}, nil
+}
+
+// AppendSignedConfirmation adds a signed human_confirmation to an unsealed
+// trace. event must be of type human_confirmation, with actor principal and
+// the payload that was signed; sig is what SignConfirmation returned for
+// ConfirmationPayload(trace, event["payload"]) on this trace as it stands. The
+// payload is recomputed here, so a missing field or trace id is refused, then
+// principal_signature is set and the event is appended as by AppendEvent. The
+// signature itself is checked by the verifier, which holds the keys.
+func AppendSignedConfirmation(trace, event, sig map[string]any) error {
+	if event["type"] != "human_confirmation" {
+		return fmt.Errorf("witness: a signed confirmation is a human_confirmation event, not %v", event["type"])
+	}
+	if event["actor"] != "principal" {
+		return fmt.Errorf("witness: a signed confirmation has actor principal, not %v", event["actor"])
+	}
+	payload, ok := event["payload"].(map[string]any)
+	if !ok {
+		return errors.New("witness: the event has no payload")
+	}
+	for _, f := range []string{"alg", "key_id", "value"} {
+		if s, _ := sig[f].(string); s == "" {
+			return fmt.Errorf("witness: the signature has no %s", f)
+		}
+	}
+	if _, err := ConfirmationPayload(trace, payload); err != nil {
+		return err
+	}
+	payload["principal_signature"] = sig
+	return AppendEvent(trace, event)
+}
