@@ -4,7 +4,7 @@ Status: draft, written 2026-11-05 against UCP release 2026-08-25. Not affiliated
 
 ## Which "UCP"
 
-"UCP" is ambiguous in general. Here it means the Universal Commerce Protocol, published at https://ucp.dev with source at https://github.com/Universal-Commerce-Protocol/ucp. I chose it because the AP2 specification names it ("Universal Commerce Protocol (UCP)", link to ucp.dev) and the repository's own README uses that name ([AP2 specification](https://ap2-protocol.org/ap2/specification/); [UCP README](https://github.com/Universal-Commerce-Protocol/ucp/blob/v2026-08-25/README.md)). I did not look for other protocols with the same acronym.
+"UCP" is ambiguous in general. Here it means the Universal Commerce Protocol, published at https://ucp.dev with source at https://github.com/Universal-Commerce-Protocol/ucp. I chose it because the AP2 specification names it ("Universal Commerce Protocol (UCP)", in plain text) and the repository's own README uses that name ([AP2 specification](https://ap2-protocol.org/ap2/specification/); [UCP README](https://github.com/Universal-Commerce-Protocol/ucp/blob/v2026-08-25/README.md)). I did not look for other protocols with the same acronym.
 
 ## What UCP is
 
@@ -37,14 +37,14 @@ UCP has one capability that overlaps with a-witness's purpose: the AP2 Mandates 
 | Event `disclosure_presented` | A Checkout has a required `links` array. Return policy, terms and fulfillment are extensions. [checkout.json schema](https://github.com/Universal-Commerce-Protocol/ucp/blob/v2026-08-25/source/schemas/shopping/checkout.json) | Weak match. The `links` and terms are things the business offers, not a record that anyone was shown them. I did not read the terms or return-policy extensions. |
 | Events `intent_captured`, `requirement_check`, `alternatives_considered`, `selection_made` | No counterpart. | Agent reasoning is not in UCP. |
 | Event `human_confirmation` | See the `human_confirmation` row. With the AP2 extension: the user-signed mandate. | |
-| Event `action_executed` | `complete_checkout` and checkout status `completed`; then an Order. [Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/); [Order](https://ucp.dev/2026-08-25/specification/shopping/order/) | `quote_id` maps to the checkout `id`. `provider_reference` could map to the order id (the order schema fields were not read). `payment_mandate_ref`: see [ap2.md](ap2.md). |
+| Event `action_executed` | `complete_checkout` and checkout status `completed`; then an Order. [Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/); [Order](https://ucp.dev/2026-08-25/specification/shopping/order/) | Proposal: `quote_id` maps to the checkout `id`. `provider_reference` could map to the order id (the order schema fields were not read). `payment_mandate_ref`: see [ap2.md](ap2.md). |
 | Event `post_sale_notice` | Order fulfillment expectations and events, and adjustments (refunds, returns, cancellations). [Order](https://ucp.dev/2026-08-25/specification/shopping/order/) | Loose match. UCP's are about delivery and money movement, not cooling-off rights. |
-| Event `error` | Checkout messages with severity; errors such as `requires_buyer_input` and `unrecoverable`. [Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/) | Close. |
+| Event `error` | Checkout messages with severity; message severity values such as `requires_buyer_input` and `unrecoverable`. [Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/) | Close. |
 | Event `escalation` | `requires_escalation` status with `continue_url`. [Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/) | Close. |
 | Hash chain | No counterpart. | The Order's fulfillment events and adjustments are described as append-only logs ([Order](https://ucp.dev/2026-08-25/specification/shopping/order/)). The pages I read do not describe them as hashed or signed. |
 | Seal and `seal.signatures` | No counterpart. | UCP signs requests with HTTP Message Signatures (RFC 9421) ([Message Signatures](https://ucp.dev/2026-08-25/specification/signatures/)). That authenticates a message, not a journey. |
 | Key ids and JWKS | UCP keys are a `keys` array of JWKs in the business or platform profile at `/.well-known/ucp`. [AP2 Mandates extension](https://ucp.dev/2026-08-25/specification/payment/extensions/ap2-mandates/) | Both use JWK. Naming differs: a-witness `key_id` is a URL plus `#kid`; UCP looks a key up by `kid` inside the profile. A verifier would need a rule for turning one into the other. |
-| Canonical JSON | UCP uses JCS (RFC 8785) for AP2 mandate payloads. [AP2 Mandates extension](https://ucp.dev/2026-08-25/specification/payment/extensions/ap2-mandates/) | Same canonicalisation as a-witness. This is the one place the two share a primitive. |
+| Canonical JSON | UCP uses JCS (RFC 8785) for AP2 mandate payloads. [AP2 Mandates extension](https://ucp.dev/2026-08-25/specification/payment/extensions/ap2-mandates/) | Same canonicalisation as a-witness. Both also use JWK for keys (previous row), so this is one of two shared primitives. |
 
 ## Mapping a UCP journey onto events
 
