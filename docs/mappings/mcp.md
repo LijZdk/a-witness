@@ -83,7 +83,7 @@ With no sessions, the recorder cannot use a connection to know which calls belon
 
 ## MCP as a transport for UCP
 
-UCP's capabilities map one to one to MCP tools (`create_checkout`, `update_checkout`, `complete_checkout`, `cancel_checkout`, `get_checkout`) ([UCP checkout MCP binding](https://ucp.dev/2026-08-25/specification/shopping/checkout/mcp/)). For such a journey a recorder on the MCP side can use the UCP tool names as the configuration of roles, and the transport value is a choice between `mcp` and `ucp`. SPEC.md does not say which. The UCP binding also puts an idempotency key in the request `meta` for `complete_checkout`. See [ucp.md](ucp.md).
+UCP's capabilities map one to one to MCP tools (`create_checkout`, `update_checkout`, `complete_checkout`, `cancel_checkout`, `get_checkout`) ([UCP checkout MCP binding](https://ucp.dev/2026-08-25/specification/shopping/checkout/mcp/)). For such a journey a recorder on the MCP side can use the UCP tool names as the configuration of roles, and the transport value is a choice between `mcp` and `ucp`. SPEC.md does not say which. The UCP binding also puts an idempotency key in the request `meta` for `complete_checkout` and `cancel_checkout`. See [ucp.md](ucp.md).
 
 ## Mismatches and open questions
 
