@@ -7,7 +7,10 @@ import (
 )
 
 // Trust says which keys a verifier trusts, role by role (SPEC.md, "Keys").
-// A key trusted for one role is never accepted for another.
+// A key id trusted for one role is refused for another, and the keys of the
+// mandate signer, the agent and a provider signature are compared with each
+// other. The same public key listed under different key ids in two role sets
+// is not detected, so keep the role sets disjoint.
 type Trust struct {
 	// Principal holds the keys trusted for the principal: the mandate
 	// signature, and the seal signature labelled "principal". Required.
@@ -25,7 +28,6 @@ type Trust struct {
 	// principal, made with the key that signed the mandate.
 	RequirePrincipalSeal bool
 
-	skip bool
 }
 
 // Principal and Provider are sign.Pinned so that their key source is fixed by
@@ -35,8 +37,10 @@ type Trust struct {
 
 // SkipSignatures, passed to Verify or Check as the Trust, leaves out the
 // signature checks (rule 15). Skipping has to be asked for by name, so that
-// nobody believes signatures were checked when they were not.
-var SkipSignatures = &Trust{skip: true}
+// nobody believes signatures were checked when they were not. Only this very
+// pointer skips: a copy of it is an empty Trust, which is an error, and a copy
+// given keys is checked in full.
+var SkipSignatures = &Trust{}
 
 var (
 	errNoResolver      = errors.New("witness: no keys to trust; pass a *witness.Trust, or witness.SkipSignatures to check without signatures")
@@ -48,8 +52,11 @@ func (t *Trust) check() error {
 	if t == nil {
 		return errNoResolver
 	}
-	if t.skip {
+	if t == SkipSignatures {
 		return nil
+	}
+	if f, ok := t.Agent.(*sign.JWKSFetcher); ok && f == nil {
+		return errIncompleteTrust
 	}
 	if t.Principal == nil || t.Provider == nil || t.Agent == nil {
 		return errIncompleteTrust

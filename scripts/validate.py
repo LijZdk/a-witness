@@ -15,7 +15,7 @@ Checks, in order:
      role: the mandate is signed with a principal key; the agent the mandate
      names signed the seal with exactly the key it names; a provider signed
      the seal with a provider key; with --require-principal-seal, the
-     principal did too. A key trusted for one role is refused in another.
+     principal did too. A key id trusted for one role is refused for another.
   9. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
 
@@ -259,6 +259,14 @@ def fail(problems, headline=""):
     return 1
 
 
+def esc(s):
+    """A document-supplied string, safe to print inside a message: plain printable text is kept;
+    control characters (C0, DEL, C1) and U+2028/U+2029 become \\uXXXX (lower case hex).
+    witness/rule15.go does the same, so Go and Python print the same bytes."""
+    return "".join(f"\\u{ord(c):04x}" if ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F or ord(c) in (0x2028, 0x2029) else c
+                   for c in s)
+
+
 def spki(key):
     """A public key's bytes (DER SubjectPublicKeyInfo), to tell whether two key ids name the same key."""
     return key.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
@@ -268,8 +276,10 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
     """SPEC.md rule 15, in the order the Go verifier (witness/rule15.go) checks it.
 
     principal, provider and agent map key ids to public keys: the keys trusted for
-    each role. A key trusted for one role is refused in another, by id and by key
-    bytes. The agent's keys are consulted only for the key the mandate names, and
+    each role. A key id trusted for one role is refused for another; key bytes are
+    compared only between the mandate signer, the agent and a provider signature.
+    The same public key listed under different ids in two role files is not
+    detected, so keep the role files disjoint. The agent's keys are consulted only for the key the mandate names, and
     only once the principal's signature on the mandate has verified.
 
     1. The mandate signature's key is a principal key, not also a provider key, and verifies.
@@ -289,17 +299,17 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
             jws.verify(sig["value"], payload, key, sig["alg"], sig["key_id"], typ)
             return True
         except ValueError as e:
-            problems.append(f"{where} does not verify: {e}")
+            problems.append(f"{where} does not verify: {esc(str(e))}")
             return False
 
     msig = mandate["signature"]
     p = msig["key_id"]
     principal_key = principal.get(p)
     if principal_key is None:
-        problems.append(f"mandate signature: key '{p}' is not trusted for the principal")
+        problems.append(f"mandate signature: key '{esc(p)}' is not trusted for the principal")
     else:
         if p in provider:
-            problems.append(f"mandate signature: key '{p}' is also trusted for the provider")
+            problems.append(f"mandate signature: key '{esc(p)}' is also trusted for the provider")
         verifies(msig, "mandate signature", jws.MANDATE_TYP, jws.mandate_payload(mandate), principal_key)
     if problems:
         problems.append("seal signatures were not checked, because the mandate signature is not valid")
@@ -314,33 +324,33 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
         agent_usable = True
         for role, keys in (("principal", principal), ("provider", provider)):
             if agent_ref in keys:
-                problems.append(f"the agent's key '{agent_ref}' is also trusted for the {role}")
+                problems.append(f"the agent's key '{esc(agent_ref)}' is also trusted for the {role}")
                 agent_usable = False
         agent_key = agent.get(agent_ref)
         if agent_key is None:
-            problems.append(f"the agent's key '{agent_ref}' could not be found")
+            problems.append(f"the agent's key '{esc(agent_ref)}' could not be found")
             agent_usable = False
         elif spki(agent_key) == spki(principal_key):
-            problems.append(f"the agent's key '{agent_ref}' is the key that signed the mandate")
+            problems.append(f"the agent's key '{esc(agent_ref)}' is the key that signed the mandate")
             agent_usable = False
 
     payload = jws.seal_payload(trace)
     agent_signed = provider_signed = principal_signed = False
     for i, sig in enumerate(trace["seal"]["signatures"]):
         signer, key_id = sig["signer"], sig["key_id"]
-        where = f"seal signature {i} ({signer})"
+        where = f"seal signature {i} ({esc(signer)})"
         if signer == "agent":
             if agent_ref and key_id != agent_ref:
-                problems.append(f"seal signature {i} (agent) uses key '{key_id}', but the mandate names the agent's key as '{agent_ref}'")
+                problems.append(f"seal signature {i} (agent) uses key '{esc(key_id)}', but the mandate names the agent's key as '{esc(agent_ref)}'")
                 continue
             if agent_usable and verifies(sig, where, jws.SEAL_TYP, payload, agent_key):
                 agent_signed = True
         elif signer == "provider":
             key = provider.get(key_id)
             if key is None:
-                problems.append(f"seal signature {i} (provider): key '{key_id}' is not trusted for the provider")
+                problems.append(f"seal signature {i} (provider): key '{esc(key_id)}' is not trusted for the provider")
             elif key_id in principal:
-                problems.append(f"seal signature {i} (provider): key '{key_id}' is also trusted for the principal")
+                problems.append(f"seal signature {i} (provider): key '{esc(key_id)}' is also trusted for the principal")
             elif agent_key is not None and spki(key) == spki(agent_key):
                 problems.append(f"seal signature {i} (provider) uses the same key as the agent")
             elif spki(key) == spki(principal_key):
@@ -349,11 +359,11 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
                 provider_signed = True
         elif signer == "principal":
             if key_id != p:
-                problems.append(f"seal signature {i} (principal) uses key '{key_id}', but the mandate was signed with '{p}'")
+                problems.append(f"seal signature {i} (principal) uses key '{esc(key_id)}', but the mandate was signed with '{esc(p)}'")
             elif verifies(sig, where, jws.SEAL_TYP, payload, principal_key):
                 principal_signed = True
         else:
-            problems.append(f"seal signature {i} ({signer}): this verifier trusts no keys for that signer")
+            problems.append(f"seal signature {i} ({esc(signer)}): this verifier trusts no keys for that signer")
 
     if not agent_signed:
         problems.append("the seal has no valid signature from the agent the mandate names")

@@ -18,7 +18,9 @@ import (
 // Pinned is sealed. Only KeySet (a fixed set of keys) and *PinnedJWKS (a
 // JWKSFetcher limited to URLs the verifier listed) implement it. A bare
 // *JWKSFetcher does not, because it fetches whatever URL a key id names,
-// so passing one where a Pinned is required does not compile.
+// so passing one where a Pinned is required does not compile. The seal guards
+// against accidental misuse only: a type that embeds a KeySet and overrides
+// PublicKey still satisfies Pinned, and deliberately so can any resolver.
 type Pinned interface {
 	Resolver
 	pinned()

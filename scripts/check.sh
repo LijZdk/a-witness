@@ -243,12 +243,14 @@ def sign_mandate(m, holder):
 
 
 def seal(t, *signers):
-    """Replace the seal's signatures with these (holder, role) pairs."""
+    """Replace the seal's signatures with these (holder, role) or (holder, role, key_id) signers."""
     payload = jws.seal_payload(t)
-    t["seal"]["signatures"] = [
-        {"signer": role, "alg": "EdDSA", "key_id": KEY_IDS[holder],
-         "value": jws.sign(jws.example_key(holder), "EdDSA", KEY_IDS[holder], jws.SEAL_TYP, payload)}
-        for holder, role in signers]
+    sigs = []
+    for holder, role, *kid in signers:
+        kid = kid[0] if kid else KEY_IDS[holder]
+        sigs.append({"signer": role, "alg": "EdDSA", "key_id": kid,
+                     "value": jws.sign(jws.example_key(holder), "EdDSA", kid, jws.SEAL_TYP, payload)})
+    t["seal"]["signatures"] = sigs
     return t
 
 
@@ -294,6 +296,41 @@ dump("no-ref.trace", seal(t, AGENT, PROVIDER))
 keys = json.load(open("examples/keys.provider.jwks.json"))
 keys["keys"].append(jws.public_jwk(jws.example_key("home-helper").public_key(), KEY_IDS["home-helper"]))
 dump("provider-with-agent.jwks", keys)
+
+# A key id with a line break and a forged PASS line in it must not reach the report raw.
+dump("control-char-key-id", variant(AGENT, ("newco", "provider", "k\nPASS  forged\u2028")))
+
+
+def keyfile(name, *extra, base="provider"):
+    """A role's key file with extra (holder, key_id) keys added."""
+    doc = json.load(open(f"examples/keys.{base}.jwks.json"))
+    doc["keys"] += [jws.public_jwk(jws.example_key(h).public_key(), kid) for h, kid in extra]
+    dump(name, doc)
+
+
+ALIAS = "https://alias.example/jwks.json#alias"
+# One combined key file used for every role: the mandate signer is also trusted for the provider (M2).
+combined = {"keys": []}
+for role in ("principal", "agent", "provider"):
+    combined["keys"] += json.load(open(f"examples/keys.{role}.jwks.json"))["keys"]
+dump("all-roles.jwks", combined)
+# A principal file that also holds a provider's key (S2).
+keyfile("principal-with-provider.jwks", ("newco", KEY_IDS["newco"]), base="principal")
+# The agent's key bytes, and the mandate signer's, under a second id in the provider file (S3).
+keyfile("provider-with-aliases.jwks", ("home-helper", ALIAS), ("sam", ALIAS + "2"))
+dump("provider-same-key-as-agent", variant(AGENT, ("home-helper", "provider", ALIAS)))
+dump("provider-same-key-as-mandate-signer", variant(AGENT, ("sam", "provider", ALIAS + "2")))
+# A mandate whose agent key is the principal's key under another id (M8).
+m = copy.deepcopy(mandate)
+m["agent"]["public_key_ref"] = ALIAS
+sign_mandate(m, "sam")
+dump("agent-is-signer.mandate", m)
+t = copy.deepcopy(trace)
+t["mandate_ref"]["mandate_hash"] = mandate_hash(m)
+rechain(t)
+dump("agent-is-signer.trace", seal(t, AGENT, PROVIDER))
+keyfile("agent-alias.jwks", ("sam", ALIAS), base="agent")
+keyfile("principal-with-agent.jwks", ("home-helper", KEY_IDS["home-helper"]), base="principal")
 EOF
 AGENT_KEY="https://agent.example/.well-known/jwks.json#home-helper"  # the key the mandate names
 # The attack this closes: rewrite what was committed, re-hash, seal with the agent's key alone.
@@ -327,6 +364,54 @@ expect_fail "--require-principal-seal refuses a seal the principal did not sign"
 echo "ok      --require-principal-seal passes a seal the principal co-signed"
 expect_fail "--skip-signatures on a genuine record is never a pass" \
   "signatures were not checked (--skip-signatures), so this is not a pass" "$M" "$T" "${SKIP[@]}"
+
+# Each rule 15 message below is compared as a whole line of the report, so removing any one check
+# from validate.py (or changing its words) fails this script. The Go tests read the same words.
+expect_line() {
+  local label="$1" want="$2"; shift 2
+  local out code=0
+  out="$("$PY" scripts/validate.py "$@" 2>&1)" || code=$?
+  if [[ $code -ne 1 || "$out" != FAIL* ]] || ! grep -qxF -- "  - $want" <<<"$out"; then
+    echo "not ok  $label (exit $code)"; echo "$out"; exit 1
+  fi
+  echo "ok      $label"
+}
+SAM="https://wallet.example/.well-known/jwks.json#prn_a91f0c3e"
+NEWCO="https://newco.example/.well-known/jwks.json#seal-2026"
+ALIAS="https://alias.example/jwks.json#alias"
+expect_line "one key file used for every role: the mandate signer is also a provider key (M2)" \
+  "mandate signature: key '$SAM' is also trusted for the provider" "$M" "$T" \
+  --principal-keys "$TMP/all-roles.jwks.json" --provider-keys "$TMP/all-roles.jwks.json" --agent-keys "$TMP/all-roles.jwks.json"
+expect_line "the agent's key in the provider file is refused (M7)" \
+  "the agent's key '$AGENT_KEY' is also trusted for the provider" "$M" "$T" \
+  --principal-keys examples/keys.principal.jwks.json --provider-keys "$TMP/provider-with-agent.jwks.json" --agent-keys examples/keys.agent.jwks.json
+expect_line "the agent's key in the principal file is refused (M7)" \
+  "the agent's key '$AGENT_KEY' is also trusted for the principal" "$M" "$T" \
+  --principal-keys "$TMP/principal-with-agent.jwks.json" --provider-keys examples/keys.provider.jwks.json --agent-keys examples/keys.agent.jwks.json
+expect_line "a mandate that names no agent key (M5)" \
+  "the mandate names no agent key (agent.public_key_ref)" "$TMP/no-ref.mandate.json" "$TMP/no-ref.trace.json" "${KEYS[@]}"
+expect_line "an agent key that is the mandate signer's key under another id (M8)" \
+  "the agent's key '$ALIAS' is the key that signed the mandate" \
+  "$TMP/agent-is-signer.mandate.json" "$TMP/agent-is-signer.trace.json" \
+  --principal-keys examples/keys.principal.jwks.json --provider-keys examples/keys.provider.jwks.json --agent-keys "$TMP/agent-alias.jwks.json"
+expect_line "a provider key also in the principal file (S2)" \
+  "seal signature 1 (provider): key '$NEWCO' is also trusted for the principal" "$M" "$T" \
+  --principal-keys "$TMP/principal-with-provider.jwks.json" --provider-keys examples/keys.provider.jwks.json --agent-keys examples/keys.agent.jwks.json
+expect_line "a provider signature made with the agent's key bytes under another id (S3, agent)" \
+  "seal signature 1 (provider) uses the same key as the agent" "$M" "$TMP/provider-same-key-as-agent.json" \
+  --principal-keys examples/keys.principal.jwks.json --provider-keys "$TMP/provider-with-aliases.jwks.json" --agent-keys examples/keys.agent.jwks.json
+expect_line "a provider signature made with the mandate signer's key bytes under another id (S3, mandate signature)" \
+  "seal signature 1 (provider) uses the same key as the mandate signature" "$M" "$TMP/provider-same-key-as-mandate-signer.json" \
+  --principal-keys examples/keys.principal.jwks.json --provider-keys "$TMP/provider-with-aliases.jwks.json" --agent-keys examples/keys.agent.jwks.json
+
+# A key id holding a line break and a forged PASS line is printed escaped, on one line, as the Go verifier does.
+expect_line "control characters in a key id are escaped, byte for byte as Go does" \
+  "$(cat testdata/golden/rule15.control-chars.txt)" "$M" "$TMP/control-char-key-id.json" "${KEYS[@]}"
+out="$("$PY" scripts/validate.py "$M" "$TMP/control-char-key-id.json" "${KEYS[@]}" 2>&1)" || true
+if grep -q '^PASS' <<<"$out" || [[ "$(wc -l <<<"$out")" -ne 3 ]]; then
+  echo "not ok  a forged PASS line got into the report"; echo "$out"; exit 1
+fi
+echo "ok      the report has no line a key id could forge"
 
 # expect_usage <label> <validate.py args...>: exit 2 and a usage message, with nothing checked.
 expect_usage() {

@@ -156,7 +156,7 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 	}
 
 	// Rule 15: the mandate and the seal are validly signed, by the right keys.
-	if !trust.skip {
+	if trust != SkipSignatures {
 		var sigProblems []Problem
 		sigProblems, principalSigned, err = signatureProblems(ctx, mandate, traceDoc, trust)
 		if err != nil {

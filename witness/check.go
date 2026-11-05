@@ -102,7 +102,7 @@ func Check(ctx context.Context, mandateJSON, traceJSON []byte, t *Trust) (Report
 	// Until witness/schema is wired in, nothing here checks the documents
 	// against the JSON Schemas (scripts/validate.py does).
 	rep.NotChecked = append(rep.NotChecked, NotChecked{0, "JSON Schema conformance was not checked"})
-	signaturesChecked := !t.skip
+	signaturesChecked := t != SkipSignatures
 	if !signaturesChecked {
 		rep.NotChecked = append(rep.NotChecked, NotChecked{15, "signatures were not checked"})
 	}

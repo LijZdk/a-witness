@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/LijZdk/a-witness/witness/sign"
 )
@@ -49,13 +50,13 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 		case err == nil || errors.Is(err, sign.ErrUnknownKey):
 			return nil, keyUnknown
 		}
-		add("%s: key '%s' could not be looked up for the %s", where, keyID, role)
+		add("%s: key '%s' could not be looked up for the %s (%v)", where, esc(keyID), role, esc(err.Error()))
 		return nil, keyFailed
 	}
 	// verifies reports whether sig verifies under key, adding a problem if not.
 	verifies := func(sig signature, where, typ string, payload []byte, key crypto.PublicKey) bool {
 		if err := sign.Verify(sig.value, payload, key, sig.alg, sig.keyID, typ); err != nil {
-			add("%s does not verify: %v", where, err)
+			add("%s does not verify: %s", where, esc(err.Error()))
 			return false
 		}
 		return true
@@ -78,10 +79,10 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 	principalKey, found := look(t.Principal, p, "principal", "mandate signature")
 	switch found {
 	case keyUnknown:
-		add("mandate signature: key '%s' is not trusted for the principal", p)
+		add("mandate signature: key '%s' is not trusted for the principal", esc(p))
 	case keyFound:
 		if _, also := look(t.Provider, p, "provider", "mandate signature"); also == keyFound {
-			add("mandate signature: key '%s' is also trusted for the provider", p)
+			add("mandate signature: key '%s' is also trusted for the provider", esc(p))
 		}
 		verifies(mandateSig, "mandate signature", MandateTyp, payload, principalKey)
 	}
@@ -108,21 +109,21 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 			r    sign.Resolver
 		}{{"principal", t.Principal}, {"provider", t.Provider}} {
 			if _, also := look(role.r, agentRef, role.name, "the agent's key"); also == keyFound {
-				add("the agent's key '%s' is also trusted for the %s", agentRef, role.name)
+				add("the agent's key '%s' is also trusted for the %s", esc(agentRef), role.name)
 				agentUsable = false
 			}
 		}
 		key, st := look(t.Agent, agentRef, "agent", "the agent's key")
 		switch st {
 		case keyUnknown:
-			add("the agent's key '%s' could not be found", agentRef)
+			add("the agent's key '%s' could not be found", esc(agentRef))
 			agentUsable = false
 		case keyFailed:
 			agentUsable = false
 		case keyFound:
 			agentKey = key
 			if sameKey(key, principalKey) {
-				add("the agent's key '%s' is the key that signed the mandate", agentRef)
+				add("the agent's key '%s' is the key that signed the mandate", esc(agentRef))
 				agentUsable = false
 			}
 		}
@@ -152,11 +153,11 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 		if err != nil {
 			return nil, false, err
 		}
-		label := fmt.Sprintf("seal signature %d (%s)", i, signer)
+		label := fmt.Sprintf("seal signature %d (%s)", i, esc(signer))
 		switch signer {
 		case "agent":
 			if agentRef != "" && sig.keyID != agentRef {
-				add("seal signature %d (agent) uses key '%s', but the mandate names the agent's key as '%s'", i, sig.keyID, agentRef)
+				add("seal signature %d (agent) uses key '%s', but the mandate names the agent's key as '%s'", i, esc(sig.keyID), esc(agentRef))
 				continue
 			}
 			if agentUsable && verifies(sig, label, SealTyp, payload, agentKey) {
@@ -165,13 +166,13 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 		case "provider":
 			key, st := look(t.Provider, sig.keyID, "provider", label)
 			if st == keyUnknown {
-				add("seal signature %d (provider): key '%s' is not trusted for the provider", i, sig.keyID)
+				add("seal signature %d (provider): key '%s' is not trusted for the provider", i, esc(sig.keyID))
 			}
 			if st != keyFound {
 				continue
 			}
 			if _, also := look(t.Principal, sig.keyID, "principal", label); also == keyFound {
-				add("seal signature %d (provider): key '%s' is also trusted for the principal", i, sig.keyID)
+				add("seal signature %d (provider): key '%s' is also trusted for the principal", i, esc(sig.keyID))
 				continue
 			}
 			if agentKey != nil && sameKey(key, agentKey) {
@@ -187,14 +188,14 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 			}
 		case "principal":
 			if sig.keyID != p {
-				add("seal signature %d (principal) uses key '%s', but the mandate was signed with '%s'", i, sig.keyID, p)
+				add("seal signature %d (principal) uses key '%s', but the mandate was signed with '%s'", i, esc(sig.keyID), esc(p))
 				continue
 			}
 			if verifies(sig, label, SealTyp, payload, principalKey) {
 				principalSigned = true
 			}
 		default:
-			add("seal signature %d (%s): this verifier trusts no keys for that signer", i, signer)
+			add("seal signature %d (%s): this verifier trusts no keys for that signer", i, esc(signer))
 		}
 	}
 
@@ -231,4 +232,20 @@ func readSignature(obj map[string]any, where string) (signature, error) {
 func sameKey(a, b crypto.PublicKey) bool {
 	e, ok := a.(interface{ Equal(crypto.PublicKey) bool })
 	return ok && b != nil && e.Equal(b)
+}
+
+// esc makes a document-supplied string safe to print inside a message: plain
+// printable text is kept as it is; control characters (C0, DEL, C1) and the
+// line and paragraph separators U+2028 and U+2029 become \uXXXX (lower case
+// hex). scripts/validate.py does the same, so the two print the same bytes.
+func esc(s string) string {
+	var b strings.Builder
+	for _, r := range s {
+		if r < 0x20 || (r >= 0x7f && r <= 0x9f) || r == 0x2028 || r == 0x2029 {
+			fmt.Fprintf(&b, "\\u%04x", r)
+		} else {
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
 }

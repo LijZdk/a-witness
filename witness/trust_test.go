@@ -406,9 +406,98 @@ func TestIncompleteTrustIsError(t *testing.T) {
 	if _, err := Verify(ctx, mandate, trace, &Trust{}); !errors.Is(err, errIncompleteTrust) {
 		t.Errorf("empty: %v", err)
 	}
-	// SkipSignatures is the one Trust that needs no keys, and a copy of it is no different.
+	// Only the SkipSignatures pointer itself skips. A copy of it is an empty Trust.
 	copied := *SkipSignatures
-	if _, err := Verify(ctx, mandate, trace, &copied); err != nil {
+	if _, err := Verify(ctx, mandate, trace, &copied); !errors.Is(err, errIncompleteTrust) {
 		t.Errorf("a copy of SkipSignatures: %v", err)
+	}
+	// A typed-nil fetcher as the Agent is incomplete, not a panic.
+	var nilFetcher *sign.JWKSFetcher
+	if _, err := Verify(ctx, mandate, trace, &Trust{Principal: full.Principal, Provider: full.Provider, Agent: nilFetcher}); !errors.Is(err, errIncompleteTrust) {
+		t.Errorf("a typed-nil Agent: %v", err)
+	}
+}
+
+// A copy of SkipSignatures that is given keys is checked in full: it must not skip.
+func TestCopyOfSkipSignaturesWithKeysIsChecked(t *testing.T) {
+	mandate, _ := exampleMandateAndTrace(t)
+	trace := edit(t, home, false, func(tr map[string]any, _ []any) {
+		tr["journey"].(map[string]any)["status"] = "failed"
+	})
+	copied := *SkipSignatures
+	full := exampleTrust(t)
+	copied.Principal, copied.Provider, copied.Agent = full.Principal, full.Provider, full.Agent
+	problems, err := Verify(context.Background(), mandate, trace, &copied)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := strings.Join(rule15(problems), "\n"); !strings.Contains(got, "seal signature 0 (agent) does not verify") {
+		t.Fatalf("a copy with keys skipped rule 15: %v", problems)
+	}
+}
+
+// failingResolver is a Pinned whose lookups fail in a way that is not ErrUnknownKey.
+type failingResolver struct{ sign.KeySet }
+
+func (failingResolver) PublicKey(context.Context, string) (crypto.PublicKey, error) {
+	return nil, errors.New("boom")
+}
+
+func TestLookupFailureIsReportedAndNeverAPass(t *testing.T) {
+	ctx := context.Background()
+	mandate, trace := exampleMandateAndTrace(t)
+	good := exampleTrust(t)
+	sam, helper := exampleKeyIDs["sam"], exampleKeyIDs["home-helper"]
+	for name, c := range map[string]struct {
+		trust *Trust
+		want  string
+	}{
+		"principal": {&Trust{Principal: failingResolver{}, Provider: good.Provider, Agent: good.Agent},
+			"mandate signature: key '" + sam + "' could not be looked up for the principal (boom)"},
+		"provider": {&Trust{Principal: good.Principal, Provider: failingResolver{}, Agent: good.Agent},
+			"mandate signature: key '" + sam + "' could not be looked up for the provider (boom)"},
+		"agent": {&Trust{Principal: good.Principal, Provider: good.Provider, Agent: failingResolver{}},
+			"the agent's key: key '" + helper + "' could not be looked up for the agent (boom)"},
+	} {
+		r, err := Check(ctx, mandate, trace, c.trust)
+		if err != nil {
+			t.Fatalf("%s: %v", name, err)
+		}
+		if r.Pass() || !slices.Contains(rule15(r.Integrity), c.want) {
+			t.Errorf("%s: want a refusal with %q, got %+v", name, c.want, r)
+		}
+	}
+}
+
+// A key id with a line break and a forged PASS line is printed escaped, on one line.
+// scripts/check.sh reads the same golden file and compares validate.py's line with it.
+func TestControlCharactersInKeyIDsAreEscaped(t *testing.T) {
+	ls, ps := string(rune(0x2028)), string(rune(0x2029))
+	mandate, trace := exampleMandateAndTrace(t)
+	doc := parse(t, reseal(t, trace, exampleSigner("home-helper", "agent"), exampleSigner("newco", "provider")))
+	doc["seal"].(map[string]any)["signatures"].([]any)[1].(map[string]any)["key_id"] = "k\nPASS  forged" + ls
+	forged, err := canon.Serialize(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := sigProblems(t, mandate, forged, exampleTrust(t))
+	if !slices.Contains(got, golden(t, "rule15.control-chars.txt")) {
+		t.Fatalf("got %q, want the golden line", got)
+	}
+	for _, m := range got {
+		if strings.ContainsAny(m, "\n\r"+ls+ps) {
+			t.Errorf("a message holds a line break: %q", m)
+		}
+	}
+	nbsp := string(rune(0xa0))
+	for in, want := range map[string]string{
+		"plain é 日本 'quoted'":                          "plain é 日本 'quoted'",
+		"a\tb\x00c\x7fd":                               `a\u0009b\u0000c\u007fd`,
+		string(rune(0x85)) + string(rune(0x9f)) + nbsp: `\u0085\u009f` + nbsp,
+		ls + ps: `\u2028\u2029`,
+	} {
+		if g := esc(in); g != want {
+			t.Errorf("esc(%q) = %q, want %q", in, g, want)
+		}
 	}
 }
