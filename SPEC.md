@@ -409,7 +409,7 @@ The same JSON value can be written in many ways (key order, spacing), so it is c
 4. Numbers are IEEE 754 doubles, written as JavaScript writes them: `1e+21`, `0.000001`, `4.5`.
 5. The result encoded as UTF-8.
 
-RFC 8785 is the definition; the list above is a summary. Input must be strict ([I-JSON](https://www.rfc-editor.org/rfc/rfc7493)): an implementation **must** refuse duplicate keys, invalid UTF-8, unpaired surrogate escapes such as `"\ud800"`, and numbers too large for a double. Accepting them would let two different inputs share a hash.
+RFC 8785 is the definition; the list above is a summary. Input must be strict ([I-JSON](https://www.rfc-editor.org/rfc/rfc7493)): an implementation **must** refuse duplicate keys, invalid UTF-8, unpaired surrogate escapes such as `"\ud800"`, numbers too large for a double, and input nested deeper than 1,000 levels (arrays and objects each count one level; no real document comes close, and unbounded depth can crash a parser). Accepting the first four would let two different inputs share a hash.
 
 Because numbers are doubles, integers beyond 2<sup>53</sup> lose precision. Money and percentages are strings for this reason, and producers should keep any other numbers small and exact.
 

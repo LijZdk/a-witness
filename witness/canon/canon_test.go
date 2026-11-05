@@ -7,7 +7,9 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"testing"
+	"time"
 )
 
 // The vectors are generated outside Go (see testdata/vectors/README.md), so
@@ -119,4 +121,59 @@ func TestSerializeGoValues(t *testing.T) {
 			t.Errorf("Serialize(%#v) = %s, want an error", bad, out)
 		}
 	}
+}
+
+func nested(open, close string, n int) []byte {
+	return []byte(strings.Repeat(open, n) + strings.Repeat(close, n))
+}
+
+func TestMaxDepth(t *testing.T) {
+	t.Run("1,000 levels of arrays are accepted", func(t *testing.T) {
+		in := nested("[", "]", MaxDepth)
+		got, err := Transform(in)
+		if err != nil || string(got) != string(in) {
+			t.Fatalf("err %v", err)
+		}
+	})
+	t.Run("1,001 levels of arrays are rejected", func(t *testing.T) {
+		_, err := Parse(nested("[", "]", MaxDepth+1))
+		if err == nil || !strings.Contains(err.Error(), "nesting deeper than 1000 levels") {
+			t.Fatalf("err %v", err)
+		}
+	})
+	objects := func(n int) []byte {
+		return []byte(strings.Repeat(`{"a":`, n) + "1" + strings.Repeat("}", n))
+	}
+	t.Run("objects count", func(t *testing.T) {
+		if _, err := Parse(objects(MaxDepth)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Parse(objects(MaxDepth + 1)); err == nil {
+			t.Fatal("accepted 1,001 levels of objects")
+		}
+	})
+	t.Run("arrays and objects share one count", func(t *testing.T) {
+		in := strings.Repeat(`[{"a":`, MaxDepth/2) + "1" + strings.Repeat("}]", MaxDepth/2)
+		if _, err := Parse([]byte(in)); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := Parse([]byte("[" + in + "]")); err == nil {
+			t.Fatal("accepted 1,001 mixed levels")
+		}
+	})
+	t.Run("a scalar is depth 0", func(t *testing.T) {
+		if _, err := Parse([]byte("1")); err != nil {
+			t.Fatal(err)
+		}
+	})
+	t.Run("5,000,000 levels are rejected quickly, without a stack overflow", func(t *testing.T) {
+		in := []byte(strings.Repeat("[", 5_000_000))
+		start := time.Now()
+		if _, err := Parse(in); err == nil {
+			t.Fatal("accepted")
+		}
+		if d := time.Since(start); d > 2*time.Second {
+			t.Fatalf("took %v", d)
+		}
+	})
 }

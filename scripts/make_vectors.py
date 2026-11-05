@@ -46,12 +46,19 @@ VALID = [
     ("number forms: exponent, trailing zeros, negative zero", "[1E2, 1.0, 0.10, -0, -0.0, 1e21, 1e-7, 1e-6]"),
     ("integers beyond 2^53 are read as doubles", "[9007199254740993, 123456789012345678901234567890]"),
     ("underflow reads as zero, as in JavaScript", "1e-400"),
+    # The canonical form of nested empty arrays is the input itself, so the
+    # expected output is that text directly (see OUTPUT_IS_INPUT). It is not
+    # computed: rfc8785.dumps raises RecursionError at this depth.
+    ("nesting at exactly 1,000 levels is accepted", "[" * 1000 + "]" * 1000),
     ("an a-witness event",
      '{"seq": 0, "at": "2026-10-02T08:00:00Z", "type": "intent_captured", "actor": "agent",'
      ' "payload": {"summary": "Renewal came in at 389 GBP.", "utterance_hash":'
      ' "sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff"},'
      ' "prev_hash": "sha256:0000000000000000000000000000000000000000000000000000000000000000"}'),
 ]
+
+# VALID cases whose expected output is the input text itself, not computed by rfc8785.
+OUTPUT_IS_INPUT = {"nesting at exactly 1,000 levels is accepted"}
 
 # Inputs a conforming implementation must reject. "input" is the JSON text;
 # "input_hex" is used instead where the bytes themselves are the problem.
@@ -72,6 +79,7 @@ INVALID = [
     ("leading zero", {"input": "01"}),
     ("single-quoted string", {"input": "'x'"}),
     ("empty input", {"input": ""}),
+    ("nesting deeper than 1,000 levels", {"input": "[" * 1001 + "]" * 1001}),
 ]
 
 MANDATE = {
@@ -171,7 +179,8 @@ def write(name, header, items):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    canon_cases = [{"name": n, "input": t, "output": canon(parse(t)).decode()} for n, t in VALID]
+    canon_cases = [{"name": n, "input": t, "output": t if n in OUTPUT_IS_INPUT else canon(parse(t)).decode()}
+                   for n, t in VALID]
     canon_cases += [{"name": n, **c, "error": True} for n, c in INVALID]
     write("canon.json", {
         "description": "RFC 8785 canonicalisation. A case with \"output\" must produce exactly that text; "

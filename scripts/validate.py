@@ -49,13 +49,44 @@ class Unreadable(Exception):
     pass
 
 
+# The same limit as the Go verifier (witness/canon.MaxDepth; SPEC.md, "Canonical JSON").
+MAX_DEPTH = 1000
+
+
+def too_deep(text):
+    """True if arrays and objects nest deeper than MAX_DEPTH. A scan, not a parse, so it cannot recurse."""
+    depth, in_string, escaped = 0, False, False
+    for c in text:
+        if in_string:
+            if escaped:
+                escaped = False
+            elif c == "\\":
+                escaped = True
+            elif c == '"':
+                in_string = False
+        elif c == '"':
+            in_string = True
+        elif c in "[{":
+            depth += 1
+            if depth > MAX_DEPTH:
+                return True
+        elif c in "]}":
+            depth -= 1
+    return False
+
+
 def load(path):
     try:
-        return json.loads(Path(path).read_text())
+        text = Path(path).read_text()
+        if too_deep(text):
+            raise Unreadable(f"{path}: nested deeper than {MAX_DEPTH} levels")
+        return json.loads(text)
     except OSError as e:
         raise Unreadable(f"{path}: cannot read ({e.strerror})")
     except json.JSONDecodeError as e:
         raise Unreadable(f"{path}: not valid JSON ({e})")
+    except RecursionError:
+        raise Unreadable(f"{path}: nested too deeply to read")
 
 
 def describe(error):
@@ -234,7 +265,7 @@ def signature_problems(mandate, trace, keys):
 USAGE = "usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]"
 
 
-def main(argv):
+def run(argv):
     keys_path = None
     if len(argv) == 4 and argv[2] == "--keys":
         keys_path = argv[3]
@@ -274,6 +305,15 @@ def main(argv):
     signatures = "signatures valid" if keys is not None else "signatures NOT checked (no --keys)"
     print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}")
     return 0
+
+
+def main(argv):
+    """run(), except that a document nested so deeply that some library recurses past Python's
+    limit (schema validation, canonicalisation, a JWS header, the key file) is a clean FAIL."""
+    try:
+        return run(argv)
+    except RecursionError:
+        return fail(["the document is nested too deeply to check"])
 
 
 if __name__ == "__main__":
