@@ -107,6 +107,9 @@ examples/
 witness/                Go reference implementation: hashing, AppendEvent, Seal, SignSeal,
                         and Verify (rules 1-8 and 15)
   canon/                RFC 8785 canonical JSON
+  schema/               checks mandates and traces against the JSON Schemas, embedded by
+                        schemas/embed.go; uses the jsonschema/v6 library and
+                        golang.org/x/text
   sign/                 detached JWS (ES256, EdDSA) and JWKS key lookup
 testdata/vectors/       cross-language test vectors (canonical JSON, numbers, hashes, signatures)
 scripts/
