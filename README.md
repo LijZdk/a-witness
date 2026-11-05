@@ -92,6 +92,8 @@ The record itself is genuine; the agent even logged that it gave up waiting. Tha
 
 ### Checks
 
+The minimum Go version is the one in `go.mod` (currently 1.26). The project supports the Go releases that still receive security fixes, and the minimum is raised when a release stops receiving them.
+
 With [just](https://github.com/casey/just) installed:
 
 - `just check-fast`: gofmt, `go vet` and the Go unit tests. A few seconds; run it after every change.

@@ -25,8 +25,8 @@ import (
 
 // MaxDepth is the deepest nesting Parse accepts. Arrays and objects each count
 // one level; a top-level scalar is depth 0 and "[]" is depth 1. No real
-// document comes close, and unbounded depth can crash a parser: on Go 1.25
-// encoding/json imposes no limit of its own, and a few million "[" overflow
+// document comes close, and unbounded depth can crash a parser: on Go 1.25 and
+// earlier encoding/json imposes no limit of its own, and a few million "[" overflow
 // the goroutine stack, a fatal error that cannot be recovered.
 const MaxDepth = 1000
 

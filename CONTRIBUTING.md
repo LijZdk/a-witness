@@ -18,7 +18,7 @@ scripts/check.sh      # scripts, examples and test vectors (needs Python and Nod
 go vet ./... && go test ./...
 ```
 
-CI runs both, plus `gofmt` and `staticcheck`. All must pass before a pull request is merged.
+CI runs both, plus `gofmt`, `staticcheck` and `govulncheck`. The minimum Go version is the one in `go.mod` (currently 1.26); we support the Go releases that still receive security fixes and raise the minimum when one stops receiving them. All must pass before a pull request is merged.
 
 Ground rules:
 
