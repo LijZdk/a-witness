@@ -20,7 +20,9 @@ type Problem struct {
 func (p Problem) String() string { return p.Message }
 
 // Verify checks that a trace is a genuine record made under the given
-// mandate: SPEC.md rules 1 to 8 and 15. No problems means the record holds
+// mandate: SPEC.md rules 1 to 8 and 15. Rule 15 includes the principal's
+// signature on each human_confirmation that carries one, whether or not
+// Trust.RequireSignedConfirmations is set; that field only matters to Check. No problems means the record holds
 // together and is signed as it should be; it says nothing yet about whether
 // the agent obeyed the mandate.
 //
@@ -50,26 +52,28 @@ func Verify(ctx context.Context, mandateJSON, traceJSON []byte, t *Trust) ([]Pro
 	if err != nil {
 		return nil, err
 	}
-	problems, _, err := verify(ctx, mandate, traceDoc, t)
+	problems, _, _, err := verify(ctx, mandate, traceDoc, t)
 	return problems, err
 }
 
 // verify is Verify on parsed documents, so that Check can run the mandate
 // rules on exactly the maps that were verified. principalSigned is true when
 // rule 15 was checked and the seal carries a valid signature from the
-// principal who signed the mandate.
-func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust) (problems []Problem, principalSigned bool, err error) {
+// principal who signed the mandate. signed maps the seq of each
+// human_confirmation whose principal signature verified to its
+// confirmation_ref; it is nil when rule 15 was skipped.
+func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust) (problems []Problem, principalSigned bool, signed map[int]string, err error) {
 	mandateID, err := field[string](mandate, "mandate_id", "mandate")
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	mandateHash, err := MandateHash(mandate)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	t, err := readTrace(traceDoc)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 
 	add := func(rule, seq int, format string, args ...any) {
@@ -95,7 +99,7 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 		}
 		h, err := HashEvent(ev.raw)
 		if err != nil {
-			return nil, false, fmt.Errorf("witness: hashing event %d: %w", i, err)
+			return nil, false, nil, fmt.Errorf("witness: hashing event %d: %w", i, err)
 		}
 		if ev.hash != h {
 			add(4, i, "event %d: hash does not match its content (tampered?)", i)
@@ -158,14 +162,14 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 	// Rule 15: the mandate and the seal are validly signed, by the right keys.
 	if trust != SkipSignatures {
 		var sigProblems []Problem
-		sigProblems, principalSigned, err = signatureProblems(ctx, mandate, traceDoc, trust)
+		sigProblems, principalSigned, signed, err = signatureProblems(ctx, mandate, traceDoc, trust)
 		if err != nil {
-			return nil, false, err
+			return nil, false, nil, err
 		}
 		problems = append(problems, sigProblems...)
 	}
 
-	return problems, principalSigned, nil
+	return problems, principalSigned, signed, nil
 }
 
 type event struct {
@@ -292,6 +296,13 @@ func readEvent(v any, where string) (event, error) {
 func quoteIDs(typ string, payload map[string]any, where string) ([]string, error) {
 	switch typ {
 	case "quote_received", "requirement_check", "selection_made", "action_executed":
+		id, err := field[string](payload, "quote_id", where)
+		return []string{id}, err
+	case "human_confirmation":
+		// A signed confirmation names the quote it approves; an unsigned one may.
+		if _, ok := payload["quote_id"]; !ok {
+			return nil, nil
+		}
 		id, err := field[string](payload, "quote_id", where)
 		return []string{id}, err
 	case "alternatives_considered":

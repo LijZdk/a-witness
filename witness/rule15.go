@@ -5,6 +5,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/LijZdk/a-witness/witness/internal/text"
 	"github.com/LijZdk/a-witness/witness/sign"
@@ -36,13 +37,20 @@ const (
 //     mandate; any other signer is refused.
 //  5. The signers a seal cannot do without are present and valid: the agent,
 //     a provider, and the principal when Trust.RequirePrincipalSeal is set.
+//  6. Each human_confirmation that carries a principal_signature, in event
+//     order: its actor is the principal; it holds the fields a signed
+//     confirmation needs; the signature uses the key that signed the mandate;
+//     and it verifies over the confirmation payload (see ConfirmationPayload).
+//     This step runs whenever step 2 did not stop.
 //
 // principalSigned reports whether the seal carries a valid signature from the
-// principal.
-func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t *Trust) (problems []Problem, principalSigned bool, err error) {
-	add := func(format string, args ...any) {
-		problems = append(problems, Problem{Rule: 15, Seq: -1, Message: fmt.Sprintf(format, args...)})
+// principal. signed maps the seq of each human_confirmation whose signature
+// verified to its confirmation_ref.
+func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t *Trust) (problems []Problem, principalSigned bool, signed map[int]string, err error) {
+	addAt := func(seq int, format string, args ...any) {
+		problems = append(problems, Problem{Rule: 15, Seq: seq, Message: fmt.Sprintf(format, args...)})
 	}
+	add := func(format string, args ...any) { addAt(-1, format, args...) }
 	look := func(r sign.Resolver, keyID, role, where string) (crypto.PublicKey, lookupResult) {
 		key, err := r.PublicKey(ctx, keyID)
 		switch {
@@ -54,27 +62,32 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 		add("%s: key '%s' could not be looked up for the %s (%v)", where, esc(keyID), role, esc(err.Error()))
 		return nil, keyFailed
 	}
-	// verifies reports whether sig verifies under key, adding a problem if not.
-	verifies := func(sig signature, where, typ string, payload []byte, key crypto.PublicKey) bool {
+	// verifiesAt reports whether sig verifies under key, adding a problem (at
+	// event seq, or -1) if not. The "sign: " prefix of the error is left off, so
+	// that a bad signature reads the same as scripts/validate.py's.
+	verifiesAt := func(seq int, sig signature, where, typ string, payload []byte, key crypto.PublicKey) bool {
 		if err := sign.Verify(sig.value, payload, key, sig.alg, sig.keyID, typ); err != nil {
-			add("%s does not verify: %s", where, esc(err.Error()))
+			addAt(seq, "%s does not verify: %s", where, esc(strings.TrimPrefix(err.Error(), "sign: ")))
 			return false
 		}
 		return true
+	}
+	verifies := func(sig signature, where, typ string, payload []byte, key crypto.PublicKey) bool {
+		return verifiesAt(-1, sig, where, typ, payload, key)
 	}
 
 	// Step 1: the mandate signature.
 	msig, err := field[map[string]any](mandate, "signature", "mandate")
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	mandateSig, err := readSignature(msig, "mandate signature")
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	payload, err := MandatePayload(mandate)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	p := mandateSig.keyID
 	principalKey, found := look(t.Principal, p, "principal", "mandate signature")
@@ -91,7 +104,7 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 	// Step 2.
 	if len(problems) > 0 {
 		add("seal signatures were not checked, because the mandate signature is not valid")
-		return problems, false, nil
+		return problems, false, nil, nil
 	}
 
 	// Step 3: the agent's key.
@@ -133,26 +146,26 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 	// Step 4: each seal signature, in order.
 	payload, err = SealPayload(traceDoc)
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	sigs, err := field[[]any](traceDoc["seal"].(map[string]any), "signatures", "trace.seal")
 	if err != nil {
-		return nil, false, err
+		return nil, false, nil, err
 	}
 	var agentSigned, providerSigned bool
 	for i, s := range sigs {
 		where := fmt.Sprintf("trace.seal.signatures[%d]", i)
 		raw, ok := s.(map[string]any)
 		if !ok {
-			return nil, false, fmt.Errorf("witness: %s: expected an object", where)
+			return nil, false, nil, fmt.Errorf("witness: %s: expected an object", where)
 		}
 		signer, err := field[string](raw, "signer", where)
 		if err != nil {
-			return nil, false, err
+			return nil, false, nil, err
 		}
 		sig, err := readSignature(raw, where)
 		if err != nil {
-			return nil, false, err
+			return nil, false, nil, err
 		}
 		label := fmt.Sprintf("seal signature %d (%s)", i, esc(signer))
 		switch signer {
@@ -210,7 +223,69 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 	if t.RequirePrincipalSeal && !principalSigned {
 		add("the seal has no valid signature from the principal who signed the mandate")
 	}
-	return problems, principalSigned, nil
+
+	// Step 6: each signed human_confirmation, in event order.
+	signed = map[int]string{}
+	events, _ := traceDoc["events"].([]any)
+	ref, _ := traceDoc["mandate_ref"].(map[string]any)
+	mandateHash, _ := ref["mandate_hash"].(string)
+	var traceID string
+	previous := "" // the confirmation_ref of the latest signed confirmation before this one
+	for i, e := range events {
+		ev, _ := e.(map[string]any)
+		pl, _ := ev["payload"].(map[string]any)
+		if ev["type"] != "human_confirmation" || pl == nil {
+			continue
+		}
+		rawSig, has := pl["principal_signature"]
+		if !has {
+			continue
+		}
+		where := fmt.Sprintf("trace.events[%d].payload.principal_signature", i)
+		sigObj, ok := rawSig.(map[string]any)
+		if !ok {
+			return nil, false, nil, fmt.Errorf("witness: %s: expected an object", where)
+		}
+		csig, err := readSignature(sigObj, where)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		if traceID == "" {
+			if traceID, err = field[string](traceDoc, "trace_id", "trace"); err != nil {
+				return nil, false, nil, err
+			}
+		}
+		cp, err := confirmationBytes(mandateHash, traceID, previous, pl)
+		if err != nil {
+			return nil, false, nil, err
+		}
+		confirmationRef := ConfirmationRef(cp)
+		previous = confirmationRef // advanced for every signed event, verified or not
+
+		label := fmt.Sprintf("event %d (human_confirmation)", i)
+		refused := false
+		if actor, _ := ev["actor"].(string); actor != "principal" {
+			addAt(i, "%s: carries the principal's signature, but its actor is '%s'", label, esc(actor))
+			refused = true
+		}
+		for _, name := range confirmationRequired {
+			if _, ok := pl[name]; !ok {
+				addAt(i, "%s: a signed confirmation needs %s", label, name)
+				refused = true
+			}
+		}
+		if refused {
+			continue
+		}
+		if csig.keyID != p {
+			addAt(i, "%s: principal_signature uses key '%s', but the mandate was signed with '%s'", label, esc(csig.keyID), esc(p))
+			continue
+		}
+		if verifiesAt(i, csig, label+": principal_signature", ConfirmationTyp, cp, principalKey) {
+			signed[i] = confirmationRef
+		}
+	}
+	return problems, principalSigned, signed, nil
 }
 
 // signature is a signature object's three fields, as read from a document.
