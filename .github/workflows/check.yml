@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+env:
+  GOVULNCHECK_VERSION: v1.9.0
+
 jobs:
   # Python scripts, examples and test vectors: everything in scripts/check.sh.
   scripts:
@@ -27,7 +30,8 @@ jobs:
         env:
           PYTHON: python
 
-  # The Go reference implementation, on the oldest Go that go.mod supports.
+  # The Go reference implementation, on the oldest Go that go.mod supports,
+  # including a govulncheck scan on the newest patch of that Go release.
   go:
     runs-on: ubuntu-latest
     steps:
@@ -43,6 +47,14 @@ jobs:
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
       - run: go test ./...
+      # go.mod's version (1.26.0) is only the oldest Go the module builds with;
+      # scan the newest patch of that release, which carries the security fixes.
+      - name: govulncheck (newest patch of the minimum Go from go.mod)
+        run: |
+          floor="$(go list -m -f '{{.GoVersion}}' | cut -d. -f1,2)"
+          patch="$(go list -m -f '{{.Version}}' "go@${floor}")"
+          echo "govulncheck on go${patch}"
+          GOTOOLCHAIN="go${patch}" go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
 
   # staticcheck needs a recent Go, so it runs on the current stable release.
   staticcheck:
@@ -69,7 +81,9 @@ jobs:
         with:
           go-version: stable
       - name: govulncheck (Go module)
-        run: go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+        env:
+          GOTOOLCHAIN: local
+        run: go run "golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}" ./...
       - uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
           python-version: "3.12"

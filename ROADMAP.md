@@ -38,7 +38,7 @@ Think of it like building a car from the frame up: frame (schemas), locks (signi
 
 **Goal:** the chain is cryptographically real, not just hashed, in a Go reference library.
 
-- [x] Go module `github.com/LijZdk/a-witness` (Go 1.25+, the first with the non-deprecated ECDSA key API), layout below
+- [x] Go module `github.com/LijZdk/a-witness` (Go 1.26+; the floor rose from 1.25 on 2026-11-05 when golang.org/x/text v0.43.0, which needs Go 1.26, was merged; Go 1.25 had already stopped receiving security fixes when Go 1.27 was released. 1.25 was the first Go with the non-deprecated ECDSA key API), layout below
 - [x] Switch to RFC 8785 (JSON Canonicalization Scheme): Go `witness/canon`, Python via the `rfc8785` library; the examples' hashes did not change
 - [x] Sign mandates and seals with ES256 / EdDSA as detached JWS (standard library crypto only, no JWS dependency). Each seal signature covers the whole trace except the signatures, decided 2026-11-03
 - [x] Key discovery via JWKS URLs in `public_key_ref` (`sign.JWKSFetcher`, HTTPS only; the agent's seal signature must use the key its mandate names)

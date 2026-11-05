@@ -2,9 +2,14 @@
 #
 # These run the same checks as CI (.github/workflows/check.yml); nothing here
 # is looser. The Python checks need `pip install -r requirements.txt` and
-# Node. Set PYTHON to choose the interpreter (default: python3).
+# Node, and check-full also needs pip-audit installed in the same Python
+# environment (`pip install pip-audit==2.10.1`, CI's pin). Set PYTHON to choose the interpreter
+# (default: python3).
 
 python := env("PYTHON", "python3")
+
+# Must match GOVULNCHECK_VERSION in .github/workflows/check.yml.
+govulncheck := "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
 
 default:
     @just --list
@@ -28,5 +33,11 @@ check-full: check-fast
     GOTOOLCHAIN="go$(go list -m -f '{{{{.GoVersion}}')" go test ./...
     @echo "== staticcheck, as CI runs it"
     go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
+    @echo "== govulncheck on the newest patch of the minimum Go release, as CI's go job does"
+    GOTOOLCHAIN="go$(go list -m -f '{{{{.Version}}' "go@$(go list -m -f '{{{{.GoVersion}}' | cut -d. -f1,2)")" go run {{govulncheck}} ./...
+    @echo "== govulncheck on the newest stable Go, as CI's vulnerabilities job does"
+    GOTOOLCHAIN="go$(go list -m -f '{{{{.Version}}' go@latest)" go run {{govulncheck}} ./...
+    @echo "== pip-audit on requirements.txt, as CI does"
+    "{{python}}" -m pip_audit -r requirements.txt
     @echo "== scripts/check.sh: examples, test vectors, Python and JavaScript cross-checks, validator cases"
     PYTHON="{{python}}" scripts/check.sh
