@@ -677,6 +677,39 @@ variant("conf-amount-mismatch", committed("198.00"))
 variant("conf-quote-mismatch", lambda t: (pl(t).update(quote_id="q_incumbent"), sign_at(t, CONF)))
 variant("conf-aer-mismatch", lambda t: (pl(t).update(aer="4.35"), sign_at(t, CONF)))
 variant("conf-quote-nowhere", lambda t: (pl(t).update(quote_id="q_nowhere"), sign_at(t, CONF)))
+variant("conf-currency-mismatch", lambda t: t["events"][10]["payload"]["amount_committed"].update(currency="EUR"))
+
+
+# A genuine signed yes must be for the quote the agent selected last (the existing quote message, no new one).
+def yes_after_other_selection(t):
+    other = copy.deepcopy(t["events"][8])
+    other["payload"]["quote_id"] = "q_incumbent"
+    t["events"].insert(CONF, other)  # the agent selects q_incumbent after choosing q_newco, before Sam's yes
+
+
+def yes_for_unselected(t):
+    pl(t).update(quote_id="q_incumbent")
+    sign_at(t, CONF)
+    t["events"][10]["payload"]["quote_id"] = "q_incumbent"  # bought what Sam signed for, though q_newco was selected
+
+
+variant("conf-other-selection", yes_after_other_selection)
+variant("conf-unselected", yes_for_unselected)
+
+
+# R1 and R2 stop R3 and R4 for that event: a wrong key on top changes nothing in the report.
+def actor_and_wrong_key(t):
+    sign_at(t, CONF, "home-helper")
+    t["events"][CONF]["actor"] = "agent"
+
+
+def missing_and_wrong_key(t):
+    sign_at(t, CONF, "home-helper")
+    pl(t).pop("shown_summary_hash")
+
+
+variant("conf-actor-wrongkey", actor_and_wrong_key)
+variant("conf-missing-wrongkey", missing_and_wrong_key)
 
 # The policy cannot apply to a mandate that does not ask for a confirmation (N2).
 m = copy.deepcopy(mandate)
@@ -752,6 +785,32 @@ expect_line "a purchase on another quote than the one signed is refused" \
   "$M" "$TMP/conf-quote-mismatch.json" "${KEYS[@]}" "${POLICY[@]}"
 expect_line "a signed AER the quote did not offer is refused (F3), word for word as Go does" \
   "$(cat testdata/golden/rule9.aer-mismatch.txt)" "$M" "$TMP/conf-aer-mismatch.json" "${KEYS[@]}"
+expect_line "a purchase in another currency than the one signed is refused (F2)" \
+  "event 10 (action_executed): the agent committed 298.00 EUR, but the principal approved 298.00 GBP" \
+  "$M" "$TMP/conf-currency-mismatch.json" "${KEYS[@]}"
+expect_line "a signed yes given after the agent selected another quote does not cover the purchase" \
+  "event 11 (action_executed): the agent committed 298.00 GBP on quote 'q_newco', but the principal approved quote 'q_incumbent'" \
+  "$M" "$TMP/conf-other-selection.json" "${KEYS[@]}"
+expect_line "a signed yes for a quote the agent did not select does not cover the purchase" \
+  "event 10 (action_executed): the agent committed 298.00 GBP on quote 'q_incumbent', but the principal approved quote 'q_newco'" \
+  "$M" "$TMP/conf-unselected.json" "${KEYS[@]}"
+# expect_report <label> <the whole report> <validate.py args...>: every line, so an extra one is caught.
+expect_report() {
+  local label="$1" want="$2"; shift 2
+  local out code=0
+  out="$("$PY" scripts/validate.py "$@" 2>&1)" || code=$?
+  if [[ $code -ne 1 || "$out" != "$want" ]]; then
+    echo "not ok  $label (exit $code)"; echo "$out"; echo "-- wanted"; echo "$want"; exit 1
+  fi
+  echo "ok      $label"
+}
+BROKEN="the record is broken or has been tampered with"
+expect_report "R1 stops R3 and R4: a wrong key and a wrong actor give the actor line alone" \
+  "FAIL  conf-actor-wrongkey.json: $BROKEN
+  - $(cat testdata/golden/rule15.confirm-actor.txt)" "$M" "$TMP/conf-actor-wrongkey.json" "${KEYS[@]}"
+expect_report "R2 stops R3 and R4: a wrong key and a missing summary give the summary line alone" \
+  "FAIL  conf-missing-wrongkey.json: $BROKEN
+  - $(cat testdata/golden/rule15.confirm-needs-summary.txt)" "$M" "$TMP/conf-missing-wrongkey.json" "${KEYS[@]}"
 expect_fail "a mismatch with the signed yes is a mandate breach, not a broken record" \
   "the record is intact, but the agent broke its mandate" "$M" "$TMP/conf-amount-mismatch.json" "${KEYS[@]}"
 expect_line "an unsigned decline still cancels a signed yes" \

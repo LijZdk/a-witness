@@ -429,6 +429,40 @@ func TestConfirmation_QuoteMismatch(t *testing.T) {
 	}
 }
 
+// A genuine signed yes covers only the quote the agent selected last, with the existing quote message.
+func TestConfirmation_SignedYesNeedsTheSelectedQuote(t *testing.T) {
+	mandate, _ := exampleMandateAndTrace(t)
+	cases := map[string]struct {
+		change func(tr map[string]any, e []any)
+		want   string
+	}{
+		"YesAfterOtherSelection": {func(tr map[string]any, e []any) {
+			other := deepCopy(t, e[8].(map[string]any))
+			payload([]any{other}, 0)["quote_id"] = "q_incumbent"
+			insertAfter(tr, 8, other) // selects q_incumbent after q_newco, before Sam's yes
+		}, "event 11 (action_executed): the agent committed 298.00 GBP on quote 'q_newco', but the principal approved quote 'q_incumbent'"},
+		"YesForUnselectedQuote": {func(tr map[string]any, e []any) {
+			payload(e, confSeq)["quote_id"] = "q_incumbent"
+			resignConfirmation(t, tr)
+			payload(e, 10)["quote_id"] = "q_incumbent"
+		}, "event 10 (action_executed): the agent committed 298.00 GBP on quote 'q_incumbent', but the principal approved quote 'q_newco'"},
+	}
+	for name, c := range cases {
+		t.Run(name, func(t *testing.T) {
+			trace := confVariant(t, c.change)
+			for _, require := range []bool{false, true} {
+				r, err := Check(context.Background(), mandate, trace, confTrust(t, require))
+				if err != nil {
+					t.Fatal(err)
+				}
+				if got := rule9Messages(r); len(r.Integrity) != 0 || !slices.Equal(got, []string{c.want}) || r.Pass() {
+					t.Fatalf("require=%v: got %q %+v", require, got, r.Integrity)
+				}
+			}
+		})
+	}
+}
+
 func TestConfirmation_AERMismatch(t *testing.T) {
 	// The home quote offers a price, not a rate: a signed yes to an AER is a yes to something it did not offer.
 	trace := confVariant(t, func(tr map[string]any, e []any) {
@@ -738,6 +772,34 @@ func TestAppendSignedConfirmation(t *testing.T) {
 		sealed["seal"] = map[string]any{}
 		if err := AppendSignedConfirmation(sealed, good(), someSig); err == nil {
 			t.Error("appended to a sealed trace")
+		}
+	})
+
+	t.Run("a refusal leaves the caller's event as it was", func(t *testing.T) {
+		sealed := deepCopy(t, base)
+		sealed["seal"] = map[string]any{}
+		ev := good()
+		before, err := canon.Serialize(ev)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := AppendSignedConfirmation(sealed, ev, someSig); err == nil {
+			t.Fatal("appended to a sealed trace")
+		}
+		after, _ := canon.Serialize(ev)
+		if string(before) != string(after) {
+			t.Fatalf("the event was changed by a refused append:\n%s\n%s", before, after)
+		}
+		// And a successful append leaves the trace holding the caller's own event.
+		ok := good()
+		tr := deepCopy(t, base)
+		if err := AppendSignedConfirmation(tr, ok, someSig); err != nil {
+			t.Fatal(err)
+		}
+		events := tr["events"].([]any)
+		last := events[len(events)-1].(map[string]any)
+		if _, signed := ok["payload"].(map[string]any)["principal_signature"]; !signed || ok["hash"] == nil || last["hash"] != ok["hash"] {
+			t.Fatalf("the appended event is not the caller's: %v", ok)
 		}
 	})
 
