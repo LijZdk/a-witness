@@ -16,7 +16,8 @@ import (
 // verifier must keep the role sets disjoint.
 type Trust struct {
 	// Principal holds the keys trusted for the principal: the mandate
-	// signature, and the seal signature labelled "principal". Required.
+	// signature, the seal signature labelled "principal", and the
+	// principal_signature on each human_confirmation. Required.
 	Principal sign.Pinned
 	// Provider holds the keys trusted for providers: the seal signature
 	// labelled "provider". Required. Trust only the parties to the journey
