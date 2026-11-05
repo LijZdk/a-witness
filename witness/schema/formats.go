@@ -3,7 +3,7 @@ package schema
 import (
 	"errors"
 	"fmt"
-	"net/url"
+	"net/netip"
 	"regexp"
 	"strings"
 	"time"
@@ -50,11 +50,25 @@ func validateDateTime(v any) error {
 	return nil
 }
 
-// validateURI accepts an absolute URI made only of RFC 3986 unreserved and
-// reserved characters and well-formed %HH escapes, with at most one '#', and
-// with '[' and ']' only as the delimiters of an IP-literal host such as
-// "http://[::1]/". That rejects spaces, non-ASCII text and stray brackets,
-// which url.Parse alone lets through, matching Python for the cases tested.
+// validateURI accepts an absolute URI under these rules, which follow RFC 3986
+// and what Python's validator (rfc3986) accepts:
+//   - only unreserved and reserved characters and well-formed %HH escapes, so
+//     no spaces and no non-ASCII text;
+//   - at most one '#';
+//   - '[' and ']' only as the delimiters of an IP-literal host;
+//   - a scheme, so the URI is absolute;
+//   - if there is an authority ("scheme://..."), it is parsed here, not by
+//     url.Parse, which is loose and differs between Go versions: at most one
+//     '@' (userinfo before it); a port, if any, of numerals only; a host that
+//     is either a reg-name
+//     (unreserved, sub-delims and %HH, so no ':'), or in brackets an IPv6
+//     address without a zone, or IPvFuture ("v" 1*HEXDIG "." 1*(unreserved /
+//     sub-delims / ":")).
+//
+// Known differences from Python: none found for URIs in the tested cases
+// (IPvFuture needs a lower-case "v" here, as in Python). For date-time, Python
+// is looser in two ways that Go is not: it accepts a lower-case "t" or "z" and
+// a trailing newline.
 //
 // A scheme such as "javascript:x" is a valid URI and passes, as it does in
 // Python. Nothing may treat a URI that passed this check as safe to fetch or
@@ -67,7 +81,7 @@ func validateURI(v any) error {
 	if strings.Count(s, "#") > 1 {
 		return errors.New("more than one '#'")
 	}
-	open, closing := ipLiteralBrackets(s)
+	open, closing, auth, hasAuth := authority(s)
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
@@ -83,56 +97,142 @@ func validateURI(v any) error {
 			return fmt.Errorf("character %q is not allowed in a URI", rune(c))
 		}
 	}
-	u, err := url.Parse(s)
-	if err != nil {
-		return errors.New("cannot be parsed as a URI")
+	if hasAuth {
+		if err := validateAuthority(auth); err != nil {
+			return err
+		}
 	}
-	if !u.IsAbs() {
+	return validateScheme(s)
+}
+
+// validateScheme checks that s starts with scheme ":" where scheme is
+// ALPHA *( ALPHA / DIGIT / "+" / "-" / "." ). url.Parse is deliberately not
+// used: its host checks differ between Go versions.
+func validateScheme(s string) error {
+	scheme, _, found := strings.Cut(s, ":")
+	if !found || scheme == "" || strings.ContainsAny(scheme, "/?#") {
 		return errors.New("not an absolute URI (no scheme)")
+	}
+	for i := 0; i < len(scheme); i++ {
+		c := scheme[i]
+		alpha := c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
+		if !(alpha || i > 0 && (c >= '0' && c <= '9' || c == '+' || c == '-' || c == '.')) {
+			return errors.New("not a valid scheme")
+		}
 	}
 	return nil
 }
 
-// ipLiteralBrackets returns the positions of the '[' and ']' that delimit an
-// IP-literal host in s ("scheme://user@[::1]:80/"), or -1, -1 if there is none.
-func ipLiteralBrackets(s string) (open, closing int) {
-	scheme, rest, ok := strings.Cut(s, "://")
-	if !ok || strings.ContainsAny(scheme, "/?#") {
-		return -1, -1
+// authority finds the authority of "scheme://authority/..." in s. It returns
+// the positions of the '[' and ']' that delimit an IP-literal host (-1, -1 if
+// there is none) and the authority text.
+func authority(s string) (open, closing int, auth string, ok bool) {
+	scheme, rest, found := strings.Cut(s, "://")
+	if !found || strings.ContainsAny(scheme, "/?#") {
+		return -1, -1, "", false
 	}
-	start := len(s) - len(rest)
-	auth := rest
+	start := len(scheme) + len("://")
+	auth = rest
 	if i := strings.IndexAny(auth, "/?#"); i >= 0 {
 		auth = auth[:i]
 	}
+	open, closing = -1, -1
+	hostStart := start
 	if i := strings.LastIndexByte(auth, '@'); i >= 0 {
-		start += i + 1
-		auth = auth[i+1:]
+		hostStart += i + 1
 	}
-	if !strings.HasPrefix(auth, "[") {
-		return -1, -1
+	if hostStart < len(s) && s[hostStart] == '[' {
+		open = hostStart
+		if end := strings.IndexByte(s[open:], ']'); end >= 0 && open+end < start+len(auth) {
+			closing = open + end
+		}
 	}
-	end := strings.IndexByte(auth, ']')
-	if end < 0 {
-		return -1, -1
+	return open, closing, auth, true
+}
+
+func validateAuthority(auth string) error {
+	if strings.Count(auth, "@") > 1 {
+		return errors.New("more than one '@' in the authority")
 	}
-	return start, start + end
+	if _, hostport, found := strings.Cut(auth, "@"); found {
+		auth = hostport
+	}
+	var port string
+	if strings.HasPrefix(auth, "[") {
+		end := strings.IndexByte(auth, ']')
+		if end < 0 {
+			return errors.New("unclosed '[' in the host")
+		}
+		port = auth[end+1:]
+		if port != "" {
+			if port[0] != ':' {
+				return errors.New("junk after the IP-literal host")
+			}
+			port = port[1:]
+		}
+		if err := validateIPLiteral(auth[1:end]); err != nil {
+			return err
+		}
+	} else {
+		_, port, _ = strings.Cut(auth, ":")
+	}
+	for i := 0; i < len(port); i++ {
+		if port[i] < '0' || port[i] > '9' {
+			return errors.New("port is not all digits")
+		}
+	}
+	return nil
+}
+
+// validateIPLiteral checks what sits between '[' and ']': an IPv6 address
+// without a zone, or IPvFuture.
+func validateIPLiteral(h string) error {
+	if rest, ok := strings.CutPrefix(h, "v"); ok {
+		hex, tail, found := strings.Cut(rest, ".")
+		if !found || hex == "" || tail == "" {
+			return errors.New("bad IPvFuture host")
+		}
+		for i := 0; i < len(hex); i++ {
+			if !isHex(hex[i]) {
+				return errors.New("bad IPvFuture host")
+			}
+		}
+		for i := 0; i < len(tail); i++ {
+			if c := tail[i]; !(isUnreserved(c) || isSubDelim(c) || c == ':') {
+				return errors.New("bad IPvFuture host")
+			}
+		}
+		return nil
+	}
+	a, err := netip.ParseAddr(h)
+	if err != nil || !a.Is6() || a.Zone() != "" || strings.Contains(h, "%") {
+		return errors.New("not an IPv6 address")
+	}
+	return nil
 }
 
 func isHex(c byte) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F'
 }
 
-// isURIChar reports whether c is unreserved or reserved in RFC 3986.
-func isURIChar(c byte) bool {
+func isUnreserved(c byte) bool {
 	switch {
 	case c >= 'a' && c <= 'z', c >= 'A' && c <= 'Z', c >= '0' && c <= '9':
 		return true
 	}
+	return c == '-' || c == '.' || c == '_' || c == '~'
+}
+
+func isSubDelim(c byte) bool {
 	switch c {
-	case '-', '.', '_', '~', ':', '/', '?', '#', '[', ']', '@',
-		'!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=':
+	case '!', '$', '&', '\'', '(', ')', '*', '+', ',', ';', '=':
 		return true
 	}
 	return false
+}
+
+// isURIChar reports whether c is unreserved or reserved in RFC 3986. The
+// brackets are checked separately, by the caller.
+func isURIChar(c byte) bool {
+	return isUnreserved(c) || isSubDelim(c) || strings.IndexByte(":/?#@[]", c) >= 0
 }

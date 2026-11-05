@@ -238,7 +238,13 @@ func collect(e *jsonschema.ValidationError, anyRequired map[string]string, p *me
 		}
 	}
 	if len(e.Causes) == 0 {
-		*out = append(*out, found{e.InstanceLocation, truncate(e.ErrorKind.LocalizedString(p))})
+		k := e.ErrorKind
+		if ap, ok := k.(*kind.AdditionalProperties); ok {
+			// The library lists these in map order; sort so the message is
+			// the same on every run.
+			k = &kind.AdditionalProperties{Properties: slices.Sorted(slices.Values(ap.Properties))}
+		}
+		*out = append(*out, found{e.InstanceLocation, truncate(k.LocalizedString(p))})
 		return
 	}
 	for _, c := range e.Causes {

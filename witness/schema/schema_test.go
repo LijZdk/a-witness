@@ -198,6 +198,7 @@ func TestDateTimeFormat(t *testing.T) {
 		{"2026-10-01T09:00:00+0100", false},
 		{"2026-10-01T09:00:00", false},
 		{"2026-10-01 09:00:00Z", false},
+		{"2026-10-01T09:00:00Z\n", false}, // known gap: Python accepts it
 		{"", false},
 	}
 	// Each case is used at three kinds of location: a plain one (mandate
@@ -238,6 +239,46 @@ func TestURIFormat(t *testing.T) {
 		{"http://a]b/", false},
 		{"http://[::1/x", false},
 		{"x:a?b://[c]/", false},
+		// Authorities: url.Parse does not check their grammar. Python's verdict
+		// on each of these was checked with jsonschema's FormatChecker.
+		{"http://a@b@c/", false},
+		{"http://user@host@x/", false},
+		{"https://u@a@[::1]/", false},
+		{"a://b@c:1@d/", false},
+		{"http://a:1:2/", false},
+		{"https://host:443:443/x", false},
+		{"http://a:b:80/", false},
+		{"x://a:b:1/", false},
+		{"x://a::/", false},
+		{"http://::1/", false},
+		{"http://::/", false},
+		{"http://[fe80::1%25en0]/", false},
+		{"http://[fe80::1%251]/", false},
+		{"http://[::1%25eth0]/", false},
+		{"http://[xyz]/", false},
+		{"http://[]/", false},
+		{"http://[1:2]/", false},
+		{"http://[::1::2]/", false},
+		{"http://[12345::]/", false},
+		{"http://[::1.2.3.400]/", false},
+		{"http://[v1.]/", false},
+		{"http://[vZ.x]/", false},
+		{"http://[V7.a:b]/", false},
+		{"http://host:80a/", false},
+		{"http://a%zz/", false},
+		{"http://user:pw@host:8080/x", true},
+		{"http://[::1]:80/", true},
+		{"http://[2001:db8::1]/", true},
+		{"http://[v7.a:b]/", true},
+		{"http://[v1.x]/", true},
+		{"http://host:/", true},
+		{"http://host:80/", true},
+		{"http://a%20b/", true},
+		{"http://[::ffff:1.2.3.4]/", true},
+		{"http://user@host/", true},
+		{"file:///etc/x", true},
+		{"urn:a:b", true},
+		{"http://a.b-c_d~e!$&'()*+,;=/", true},
 		{"/mandates/m1/status", false},
 		{"wallet.example/status", false},
 		{"https://wallet.example/a b", false},
@@ -393,6 +434,30 @@ func TestTruncate(t *testing.T) {
 	}
 	if got != strings.Repeat("a", maxMessage-1)+"…" {
 		t.Errorf("split on the wrong boundary: %q", got[len(got)-8:])
+	}
+}
+
+// The library lists unexpected keys in map order; the message must not.
+func TestAdditionalPropertiesMessageIsStable(t *testing.T) {
+	var first string
+	for n := 0; n < 20; n++ {
+		m := parseExample(t, "home-insurance-switch", "mandate")
+		for _, k := range []string{"e_extra", "b_extra", "d_extra", "a_extra", "c_extra"} {
+			m[k] = true
+		}
+		vs := ValidateMandate(m)
+		if len(vs) != 1 {
+			t.Fatalf("got %v", strs(vs))
+		}
+		if n == 0 {
+			first = vs[0].String()
+			want := "<root>: additional properties 'a_extra', 'b_extra', 'c_extra', 'd_extra', 'e_extra' not allowed"
+			if first != want {
+				t.Fatalf("got %q, want %q", first, want)
+			}
+		} else if vs[0].String() != first {
+			t.Fatalf("run %d: %q differs from %q", n, vs[0].String(), first)
+		}
 	}
 }
 
