@@ -90,7 +90,12 @@ FAIL  home-insurance-no-confirmation.trace.json: the record is intact, but the a
 
 The record itself is genuine; the agent even logged that it gave up waiting. That is the point: a faithful record of a bad decision is exactly what settles the argument afterwards. The validator keeps the two questions apart, "is this record genuine?" and "did the agent do what it was allowed to?", and says which one failed.
 
-To run everything CI runs (example regeneration, the passing example, and the inputs that must fail): `scripts/check.sh`.
+### Checks
+
+With [just](https://github.com/casey/just) installed:
+
+- `just check-fast`: gofmt, `go vet` and the Go unit tests. A few seconds; run it after every change.
+- `just check-full`: `check-fast`, then everything else CI runs: `go mod verify`, the race detector, the tests on the oldest Go that `go.mod` supports, staticcheck, and `scripts/check.sh` (examples, test vectors, the Python and JavaScript cross-checks, and the inputs that must fail). It needs `pip install -r requirements.txt` and Node; set `PYTHON` to choose the interpreter.
 
 ## Repository layout
 
@@ -122,7 +127,8 @@ scripts/
   make_examples.py      builds and signs the examples
   validate.py           schema, chain, timestamp, evidence, quote reference, seal
                         and signature checks, plus the human confirmation rule
-  check.sh              everything CI runs
+  check.sh              the example, vector and validator checks CI runs
+justfile                check-fast and check-full: the quality gates
 SPEC.md                 every field, the cross-document rules, and exact hashing
 ROADMAP.md              phase by phase plan
 CONTRIBUTING.md         how to help
