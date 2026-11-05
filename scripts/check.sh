@@ -98,6 +98,10 @@ echo "== the no-confirmation example fails, as a mandate breach rather than a br
 expect_fail "purchase without the principal's yes is flagged" \
   "the record is intact, but the agent broke its mandate" \
   examples/home-insurance-no-confirmation.mandate.json examples/home-insurance-no-confirmation.trace.json "${KEYS[@]}"
+# The Go verifier (witness.Check) must report the same finding; its test reads this same file.
+expect_fail "the rule 9 finding is word for word the one the Go verifier reports" \
+  "$(cat testdata/golden/no-confirmation.rule9.txt)" \
+  examples/home-insurance-no-confirmation.mandate.json examples/home-insurance-no-confirmation.trace.json "${KEYS[@]}"
 
 echo "== broken inputs fail cleanly"
 sed 's/"298.00"/"198.00"/' "$T" > "$TMP/tampered.json"
@@ -137,12 +141,60 @@ def variant(name, mutate, trace_mutate=lambda t: None):
 variant("dangling-ref", lambda e: e[8]["payload"].update(quote_id="q_nowhere"))
 variant("duplicate-quote", lambda e: e[3]["payload"].update(quote_id="q_newco"))
 variant("rewritten-price", lambda e: e[2]["payload"]["price"].update(amount="198.00"))
+
+def declined_after_approval(e):
+    declined = json.loads(json.dumps(e[9]))
+    declined["payload"]["decision"] = "declined"
+    e.insert(10, declined)  # the principal says no after saying yes
+    for i, ev in enumerate(e):
+        ev["seq"] = i
+
+variant("declined-after-approval", declined_after_approval)
+
+def approval_before_selection(e):
+    e[8], e[9] = e[9], e[8]  # the principal says yes, and only then does the agent choose
+    e[8]["at"], e[9]["at"] = e[9]["at"], e[8]["at"]
+    for i, ev in enumerate(e):
+        ev["seq"] = i
+
+variant("approval-before-selection", approval_before_selection)
+
+
+def approval_without_selection(e):
+    del e[8]  # a yes with no choice anywhere before the purchase
+    for i, ev in enumerate(e):
+        ev["seq"] = i
+
+variant("approval-without-selection", approval_without_selection,
+        lambda t: [r.update(event_seqs=sorted({min(x, len(t["events"]) - 1) for x in r["event_seqs"]}))
+                   for r in t["outcome_evidence"].values()])  # keep the evidence citing events that exist
+variant("agent-approval", lambda e: e[9].update(actor="agent"))  # the agent writes the yes itself
+variant("different-quote", lambda e: e[10]["payload"].update(quote_id="q_cheapco"))  # approved q_newco
 variant("status-changed", lambda e: None, lambda t: t["journey"].update(status="failed"))
 EOF
 expect_fail "selection of a quote nobody offered is caught" \
   "event 8 (selection_made): refers to quote 'q_nowhere', but no earlier quote_received offered it" "$M" "$TMP/dangling-ref.json"
 expect_fail "two quotes sharing an id is caught" \
   "event 3 (quote_received): quote_id 'q_newco' was already used by event 2" "$M" "$TMP/duplicate-quote.json"
+
+expect_fail "a yes withdrawn before the purchase is flagged as a mandate breach" \
+  "the record is intact, but the agent broke its mandate" "$M" "$TMP/declined-after-approval.json"
+expect_fail "a declined yes leaves the purchase without an approval" \
+  "event 11 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/declined-after-approval.json"
+expect_fail "a yes given before the choice was made does not cover the purchase" \
+  "event 10 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/approval-before-selection.json"
+expect_fail "a yes with no choice made at all is not an approval of the purchase" \
+  "event 9 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/approval-without-selection.json"
+expect_fail "a yes given before the choice is still a mandate breach, not a broken record" \
+  "the record is intact, but the agent broke its mandate" "$M" "$TMP/approval-before-selection.json"
+expect_fail "a yes recorded by the agent is not the principal's yes" \
+  "event 10 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/agent-approval.json"
+expect_fail "a yes recorded by the agent is a mandate breach, not a broken record" \
+  "the record is intact, but the agent broke its mandate" "$M" "$TMP/agent-approval.json"
+expect_fail "a purchase on a different quote than the one approved is flagged as a mandate breach" \
+  "the record is intact, but the agent broke its mandate" "$M" "$TMP/different-quote.json"
+expect_fail "the quote approved is named in the finding" \
+  "on quote 'q_cheapco', but the principal approved quote 'q_newco'" "$M" "$TMP/different-quote.json"
 
 expect_fail "a re-hashed rewrite is caught by the seal signatures" \
   "seal signature 0 (agent) does not verify" "$M" "$TMP/rewritten-price.json" "${KEYS[@]}"

@@ -192,33 +192,48 @@ def reference_problems(trace):
 
 def confirmation_problems(mandate, trace):
     """Every binding action needs its own live yes from the principal, given
-    after the agent chose what to buy.
+    after the agent chose what to buy and for the quote it chose.
 
     Applies when the mandate says human_confirmation is "always". A yes only
-    counts if it comes from the principal with decision "approved", and it
-    is used up by one action_executed. A new selection_made also clears it,
-    because a yes to one choice is not a yes to a different one.
+    counts if it comes from the principal with decision "approved", after a
+    selection_made. It is used up by one action_executed, and that action must
+    be on the quote that was selected. A new selection_made cancels it, because
+    a yes to one choice is not a yes to a different one; so does a later
+    human_confirmation that is declined or modified.
 
     "above_limits" needs the price and scope rules, so it waits for Phase 3.
     """
     if mandate["human_confirmation"] != "always":
         return []
     problems = []
-    approval = None
+    selected = None        # quote_id of the latest selection_made
+    approved_quote = None  # the quote a pending approval is for; None if none is pending
     for ev in trace["events"]:
         kind, payload = ev["type"], ev["payload"]
         if kind == "selection_made":
-            approval = None
-        elif kind == "human_confirmation" and ev["actor"] == "principal" and payload["decision"] == "approved":
-            approval = ev["seq"]
+            selected = payload["quote_id"]
+            approved_quote = None
+        elif kind == "human_confirmation":
+            if payload["decision"] == "approved":
+                if ev["actor"] == "principal":
+                    # Before any selection_made, selected is None: the yes is for no choice, so no yes is pending.
+                    approved_quote = selected
+            else:
+                approved_quote = None
         elif kind == "action_executed":
-            if approval is None:
-                amount = payload["amount_committed"]
+            amount = payload["amount_committed"]
+            committed = f"{amount['amount']} {amount['currency']}"
+            if approved_quote is None:
                 problems.append(
-                    f"event {ev['seq']} (action_executed): the agent committed {amount['amount']} {amount['currency']} "
+                    f"event {ev['seq']} (action_executed): the agent committed {committed} "
                     f"without an approved human_confirmation from the principal, but the mandate requires one every time"
                 )
-            approval = None
+            elif payload["quote_id"] != approved_quote:
+                problems.append(
+                    f"event {ev['seq']} (action_executed): the agent committed {committed} "
+                    f"on quote '{payload['quote_id']}', but the principal approved quote '{approved_quote}'"
+                )
+            approved_quote = None
     return problems
 
 
