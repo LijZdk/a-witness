@@ -680,7 +680,8 @@ variant("conf-quote-nowhere", lambda t: (pl(t).update(quote_id="q_nowhere"), sig
 variant("conf-currency-mismatch", lambda t: t["events"][10]["payload"]["amount_committed"].update(currency="EUR"))
 
 
-# A genuine signed yes must be for the quote the agent selected last (the existing quote message, no new one).
+# A genuine signed yes must be for the quote the agent selected last: an action on the signed quote after
+# another selection gets its own message (golden rule9.signed-other-quote.txt); any other quote, the usual one.
 def yes_after_other_selection(t):
     other = copy.deepcopy(t["events"][8])
     other["payload"]["quote_id"] = "q_incumbent"
