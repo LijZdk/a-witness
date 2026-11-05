@@ -5,3 +5,7 @@ jsonschema[format-nongpl]>=4.18,<5
 
 # RFC 8785 canonical JSON, used for every hash (Apache-2.0, Trail of Bits).
 rfc8785>=0.1.4,<0.2
+
+# Signatures: Ed25519 and ES256. 43 is the first version with deterministic
+# ECDSA (RFC 6979), which keeps the generated signature vectors reproducible.
+cryptography>=43

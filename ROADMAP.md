@@ -34,16 +34,16 @@ Think of it like building a car from the frame up: frame (schemas), locks (signi
 
 ---
 
-## Phase 2: Go core, real signatures and canonicalisation (2 to 3 sessions) - STARTED
+## Phase 2: Go core, real signatures and canonicalisation (2 to 3 sessions) - DONE 2026-11-03
 
 **Goal:** the chain is cryptographically real, not just hashed, in a Go reference library.
 
-- [x] Go module `github.com/LijZdk/a-witness` (Go 1.23+), layout below
+- [x] Go module `github.com/LijZdk/a-witness` (Go 1.25+, the first with the non-deprecated ECDSA key API), layout below
 - [x] Switch to RFC 8785 (JSON Canonicalization Scheme): Go `witness/canon`, Python via the `rfc8785` library; the examples' hashes did not change
-- [ ] Sign mandates and seals with ES256 / EdDSA as detached JWS (prefer standard library crypto; one small JWS dependency at most)
-- [ ] Key discovery via JWKS URLs in `public_key_ref`
-- [ ] Core API: `HashEvent`, `AppendEvent`, `Seal`, `Verify` (`HashEvent`, `MandateHash` and an integrity-only `Verify` for rules 1-8 done; `AppendEvent` and `Seal` come with signing)
-- [ ] Test vectors in `testdata/vectors/`: known inputs with known hashes and signatures, so other languages can implement and check themselves (canonical JSON, numbers and hashes done; signatures to come)
+- [x] Sign mandates and seals with ES256 / EdDSA as detached JWS (standard library crypto only, no JWS dependency). Each seal signature covers the whole trace except the signatures, decided 2026-11-03
+- [x] Key discovery via JWKS URLs in `public_key_ref` (`sign.JWKSFetcher`, HTTPS only; the agent's seal signature must use the key its mandate names)
+- [x] Core API: `HashEvent`, `AppendEvent`, `Seal`, `Verify` (plus `MandateHash`, `SignMandate`, `SignSeal`; `Verify` covers rules 1-8 and 15)
+- [x] Test vectors in `testdata/vectors/`: known inputs with known hashes and signatures, so other languages can implement and check themselves
 - [x] CI: `go test ./...`, `go vet`, `staticcheck`, plus the Python schema check until Phase 3 replaces it
 
 Package layout:

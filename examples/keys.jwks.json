@@ -1,0 +1,40 @@
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://wallet.example/.well-known/jwks.json#prn_a91f0c3e",
+      "x": "-I9-bVdz-rNjcIEdZH-HTAS9m6Wxqtf8qbqAwZHL2fg"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://wallet.example/.well-known/jwks.json#prn_5d2e7b14",
+      "x": "91H3k6bIVsy-DpW2TUzjX2AJXELp5wuvzQBbkETy-gw"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://agent.example/.well-known/jwks.json#home-helper",
+      "x": "00GYM32J48s_T95Yv_p8PczhBGvyQ74b9d924RH36ks"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://agent.example/.well-known/jwks.json#save-wise",
+      "x": "Sc5KU1KDnCtZ2QbaPmCTrAUQEayN3vOXtJlmAC2HZAI"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://newco.example/.well-known/jwks.json#seal-2026",
+      "x": "f-nHGsqA7x4iq3yvECgpBGvC77Yus_bAoHZupbuwGRQ"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://steadybank.example/.well-known/jwks.json#seal-2026",
+      "x": "DCZ0JkbjK_2_7hYOu_g1qd9Q4FJAKklyWdn0LQqYOYY"
+    }
+  ]
+}

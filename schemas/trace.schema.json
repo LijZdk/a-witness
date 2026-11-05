@@ -53,7 +53,7 @@
     },
     "seal": {
       "type": "object",
-      "description": "Closes the trace. Signs the hash of the final event so nothing can be added, removed or reordered afterwards.",
+      "description": "Closes the trace. Every signature covers the whole trace except the signatures themselves, so nothing can be added, removed, reordered or changed afterwards. See SPEC.md, Signatures.",
       "required": ["final_event_hash", "sealed_at", "signatures"],
       "additionalProperties": false,
       "properties": {
@@ -62,7 +62,7 @@
         "signatures": {
           "type": "array",
           "minItems": 1,
-          "description": "At least the agent. Ideally the provider too, so both sides hold the same record.",
+          "description": "At least the agent, with the key its mandate names. Ideally the provider too, so both sides hold the same record.",
           "items": {
             "type": "object",
             "required": ["signer", "alg", "key_id", "value"],
@@ -70,8 +70,8 @@
             "properties": {
               "signer": { "enum": ["agent", "provider", "principal", "witness_service"] },
               "alg": { "enum": ["ES256", "EdDSA"] },
-              "key_id": { "type": "string" },
-              "value": { "type": "string" }
+              "key_id": { "type": "string", "description": "Where verifiers find the public key, ideally a JWKS URL, '#', and the key's kid." },
+              "value": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.\\.[A-Za-z0-9_-]+$", "description": "Detached compact JWS: header..signature, with the payload left out." }
             }
           }
         }

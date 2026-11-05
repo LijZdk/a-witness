@@ -1,6 +1,7 @@
 package witness
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/LijZdk/a-witness/witness/canon"
+	"github.com/LijZdk/a-witness/witness/sign"
 )
 
 var examples = []string{"home-insurance-switch", "home-insurance-no-confirmation", "fixed-rate-savings-switch"}
@@ -72,14 +74,24 @@ func TestHashVectors(t *testing.T) {
 	}
 }
 
-// The examples were written by Python, so passing them shows the two
-// implementations agree on real documents, not just on the vectors.
+func exampleKeys(t *testing.T) sign.KeySet {
+	t.Helper()
+	keys, err := sign.ParseJWKS(readFile(t, "examples", "keys.jwks.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return keys
+}
+
+// The examples were written and signed by Python, so passing them shows the
+// two implementations agree on real documents, not just on the vectors.
 func TestExamplesVerify(t *testing.T) {
+	keys := exampleKeys(t)
 	for _, name := range examples {
 		t.Run(name, func(t *testing.T) {
 			mandate := readFile(t, "examples", name+".mandate.json")
 			trace := readFile(t, "examples", name+".trace.json")
-			problems, err := Verify(mandate, trace)
+			problems, err := Verify(context.Background(), mandate, trace, keys)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -133,6 +145,8 @@ func payload(events []any, seq int) map[string]any {
 	return events[seq].(map[string]any)["payload"].(map[string]any)
 }
 
+// These cases test rules 1 to 8, so signatures are skipped: every edit
+// would also break the seal signatures, which TestSignatures covers.
 func TestVerifyFindsProblems(t *testing.T) {
 	home := "home-insurance-switch"
 	homeMandate := readFile(t, "examples", home+".mandate.json")
@@ -232,7 +246,7 @@ func TestVerifyFindsProblems(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			got, err := Verify(c.mandate, c.trace)
+			got, err := Verify(context.Background(), c.mandate, c.trace, SkipSignatures)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -256,7 +270,7 @@ func TestVerifyAcceptsExtensionFields(t *testing.T) {
 	trace := edit(t, "home-insurance-switch", true, func(_ map[string]any, e []any) {
 		payload(e, 0)["channel"] = "voice"
 	})
-	problems, err := Verify(readFile(t, "examples", "home-insurance-switch.mandate.json"), trace)
+	problems, err := Verify(context.Background(), readFile(t, "examples", "home-insurance-switch.mandate.json"), trace, SkipSignatures)
 	if err != nil || len(problems) > 0 {
 		t.Fatalf("a correctly hashed extension field was rejected: %v %v", err, problems)
 	}
@@ -274,7 +288,7 @@ func TestVerifyRejectsUnreadableDocuments(t *testing.T) {
 		"fractional seq":       `{"mandate_ref": {"mandate_id": "m", "mandate_hash": "h"}, "events": [{"seq": 0.5}], "seal": {}}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if problems, err := Verify(mandate, []byte(trace)); err == nil {
+			if problems, err := Verify(context.Background(), mandate, []byte(trace), SkipSignatures); err == nil {
 				t.Fatalf("accepted an unreadable trace, reporting %v", problems)
 			}
 		})

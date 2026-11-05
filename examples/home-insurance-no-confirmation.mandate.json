@@ -15,7 +15,7 @@
       "version": "0.3.1",
       "model": "example-model"
     },
-    "public_key_ref": "https://agent.example/.well-known/jwks.json#k1"
+    "public_key_ref": "https://agent.example/.well-known/jwks.json#home-helper"
   },
   "scope": {
     "product_classes": [
@@ -70,8 +70,8 @@
     "revocation_url": "https://wallet.example/mandates/mdt_Wc5Jp1Ns8Gd4/status"
   },
   "signature": {
-    "alg": "ES256",
-    "key_id": "prn_a91f0c3e#wallet",
-    "value": "UNSIGNED-EXAMPLE"
+    "alg": "EdDSA",
+    "key_id": "https://wallet.example/.well-known/jwks.json#prn_a91f0c3e",
+    "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vd2FsbGV0LmV4YW1wbGUvLndlbGwta25vd24vandrcy5qc29uI3Bybl9hOTFmMGMzZSIsInR5cCI6ImEtd2l0bmVzcy1tYW5kYXRlIn0..KAxqkoEKPqplyGzeh_v5XvCiSxUv379l7WvX3HMa3TCRZYz01CxYuQ0QtS2KxJT9uKTZnFwNsCawFLIQxLa6AQ"
   }
 }

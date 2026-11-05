@@ -1,5 +1,6 @@
 // Package witness is the reference implementation of a-witness: hashing,
-// and checking that a trace is a genuine record made under its mandate.
+// building, sealing and signing traces, and checking that a trace is a
+// genuine, signed record made under its mandate.
 //
 // SPEC.md is the definition; this package implements it. Mandates, traces
 // and events are handled as parsed JSON (see canon.Parse), not Go structs,

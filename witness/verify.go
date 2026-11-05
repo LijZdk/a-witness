@@ -1,11 +1,15 @@
 package witness
 
 import (
+	"context"
+	"crypto"
+	"errors"
 	"fmt"
 	"math"
 	"time"
 
 	"github.com/LijZdk/a-witness/witness/canon"
+	"github.com/LijZdk/a-witness/witness/sign"
 )
 
 // Problem is one way a trace breaks a rule in SPEC.md, "Rules across documents".
@@ -17,18 +21,36 @@ type Problem struct {
 
 func (p Problem) String() string { return p.Message }
 
+// SkipSignatures, passed to Verify as the key resolver, leaves out the
+// signature checks (rule 15). Skipping has to be asked for by name, so that
+// nobody believes signatures were checked when they were not.
+var SkipSignatures sign.Resolver = skipSignatures{}
+
+type skipSignatures struct{}
+
+func (skipSignatures) PublicKey(context.Context, string) (crypto.PublicKey, error) {
+	return nil, errors.New("witness: signatures are not being checked")
+}
+
 // Verify checks that a trace is a genuine record made under the given
-// mandate: SPEC.md rules 1 to 8. No problems means the record holds
-// together; it says nothing yet about whether the agent obeyed the mandate.
+// mandate: SPEC.md rules 1 to 8 and 15. No problems means the record holds
+// together and is signed as it should be; it says nothing yet about whether
+// the agent obeyed the mandate.
+//
+// keys decides which public keys are trusted for which key ids: a
+// sign.KeySet, a *sign.JWKSFetcher, or your own sign.Resolver. Pass
+// SkipSignatures to check rules 1 to 8 only.
 //
 // Not checked here yet:
 //   - JSON Schema conformance: scripts/validate.py, until witness/schema exists
-//   - signatures (rule 15): next in Phase 2
 //   - mandate rules 9 to 14: Phase 3 (scripts/validate.py checks rule 9)
 //
 // An error means a document could not be read at all: it is not strict
 // JSON (see canon.Parse), or lacks a field these checks need.
-func Verify(mandateJSON, traceJSON []byte) ([]Problem, error) {
+func Verify(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolver) ([]Problem, error) {
+	if keys == nil {
+		return nil, errors.New("witness: no key resolver; pass witness.SkipSignatures to check without signatures")
+	}
 	mandate, err := parseObject(mandateJSON, "mandate")
 	if err != nil {
 		return nil, err
@@ -134,6 +156,100 @@ func Verify(mandateJSON, traceJSON []byte) ([]Problem, error) {
 		}
 	}
 
+	// Rule 15: the mandate and the seal are validly signed.
+	if keys != SkipSignatures {
+		sigProblems, err := signatureProblems(ctx, mandate, traceDoc, keys)
+		if err != nil {
+			return nil, err
+		}
+		problems = append(problems, sigProblems...)
+	}
+
+	return problems, nil
+}
+
+// signatureProblems checks rule 15: the principal's signature on the
+// mandate, every seal signature, and that the agent named in the mandate
+// signed the seal with the key the mandate names.
+func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, keys sign.Resolver) ([]Problem, error) {
+	var problems []Problem
+	add := func(format string, args ...any) {
+		problems = append(problems, Problem{Rule: 15, Seq: -1, Message: fmt.Sprintf(format, args...)})
+	}
+	check := func(sig map[string]any, where, typ string, payload []byte) (keyID string, ok bool, err error) {
+		var alg, value string
+		if alg, err = field[string](sig, "alg", where); err != nil {
+			return "", false, err
+		}
+		if keyID, err = field[string](sig, "key_id", where); err != nil {
+			return "", false, err
+		}
+		if value, err = field[string](sig, "value", where); err != nil {
+			return "", false, err
+		}
+		key, err := keys.PublicKey(ctx, keyID)
+		if err != nil {
+			add("%s: key %q could not be found (%v)", where, keyID, err)
+			return keyID, false, nil
+		}
+		if err := sign.Verify(value, payload, key, alg, keyID, typ); err != nil {
+			add("%s does not verify: %v", where, err)
+			return keyID, false, nil
+		}
+		return keyID, true, nil
+	}
+
+	sig, err := field[map[string]any](mandate, "signature", "mandate")
+	if err != nil {
+		return nil, err
+	}
+	payload, err := MandatePayload(mandate)
+	if err != nil {
+		return nil, err
+	}
+	if _, _, err := check(sig, "mandate signature", MandateTyp, payload); err != nil {
+		return nil, err
+	}
+
+	var agentKey string // the key the mandate says the agent seals with, if it names one
+	if agent, ok := mandate["agent"].(map[string]any); ok {
+		agentKey, _ = agent["public_key_ref"].(string)
+	}
+	payload, err = SealPayload(traceDoc)
+	if err != nil {
+		return nil, err
+	}
+	sigs, err := field[[]any](traceDoc["seal"].(map[string]any), "signatures", "trace.seal")
+	if err != nil {
+		return nil, err
+	}
+	agentSigned := false
+	for i, s := range sigs {
+		where := fmt.Sprintf("trace.seal.signatures[%d]", i)
+		sig, ok := s.(map[string]any)
+		if !ok {
+			return nil, fmt.Errorf("witness: %s: expected an object", where)
+		}
+		signer, err := field[string](sig, "signer", where)
+		if err != nil {
+			return nil, err
+		}
+		keyID, valid, err := check(sig, fmt.Sprintf("seal signature %d (%s)", i, signer), SealTyp, payload)
+		if err != nil {
+			return nil, err
+		}
+		if signer != "agent" {
+			continue
+		}
+		if agentKey != "" && keyID != agentKey {
+			add("seal signature %d (agent) uses key %q, but the mandate names the agent's key as %q", i, keyID, agentKey)
+			continue
+		}
+		agentSigned = agentSigned || valid
+	}
+	if !agentSigned {
+		add("the seal has no valid signature from the agent the mandate names")
+	}
 	return problems, nil
 }
 

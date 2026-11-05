@@ -6,9 +6,13 @@ vectors come from JavaScript instead; see make_number_vectors.mjs.
 
 Run with: python scripts/make_vectors.py
 """
+import hashlib
 import json
 from pathlib import Path
 
+from cryptography.hazmat.primitives.asymmetric import ec
+
+import jws
 from chain import canon, event_hash, mandate_hash, sha_text
 
 OUT = Path(__file__).resolve().parent.parent / "testdata" / "vectors"
@@ -112,6 +116,51 @@ def hash_of(case):
     return event_hash(value)
 
 
+def signature_vectors():
+    """Detached JWS cases (SPEC.md, "Signatures"). alg, kid and typ are what the verifier
+    expects; jwk is the key it verifies with. EdDSA cases also give the private key seed,
+    because Ed25519 is deterministic: an implementation must reproduce jws exactly."""
+    def seed(name):
+        return hashlib.sha256(b"a-witness example key: " + name.encode()).digest()
+
+    ed, other = jws.example_key("vector ed25519"), jws.example_key("vector other")
+    p256_order = 0xFFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+    es = ec.derive_private_key(int.from_bytes(seed("vector p256"), "big") % (p256_order - 1) + 1, ec.SECP256R1())
+    ed_kid, es_kid = "https://keys.example/jwks.json#ed", "https://keys.example/jwks.json#p256"
+    ed_jwk, es_jwk = jws.public_jwk(ed.public_key(), ed_kid), jws.public_jwk(es.public_key(), es_kid)
+    mandate = canon({"mandate_id": "mdt_vectorMandate01", "spec_version": "0.1"})
+    trace = canon({"trace_id": "trc_vectorTrace0001", "journey": {"status": "completed"}, "note": "café 😀"})
+
+    def case(name, valid, jws_value, alg="EdDSA", kid=ed_kid, typ=jws.MANDATE_TYP, jwk=ed_jwk, payload=mandate, **extra):
+        return {"name": name, "valid": valid, "alg": alg, "kid": kid, "typ": typ, "jwk": jwk,
+                "payload": payload.decode(), "jws": jws_value, **extra}
+
+    good = jws.sign(ed, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate)
+    protected, sig = good.split("..")
+    es_protected, es_data = jws.signing_input({"alg": "ES256", "kid": es_kid, "typ": jws.MANDATE_TYP}, mandate)
+    return [
+        case("EdDSA mandate signature", True, good, seed=seed("vector ed25519").hex()),
+        case("EdDSA seal signature over non-ASCII content", True,
+             jws.sign(ed, "EdDSA", ed_kid, jws.SEAL_TYP, trace), typ=jws.SEAL_TYP, payload=trace, seed=seed("vector ed25519").hex()),
+        case("ES256 mandate signature", True, jws.sign(es, "ES256", es_kid, jws.MANDATE_TYP, mandate),
+             alg="ES256", kid=es_kid, jwk=es_jwk),
+        case("payload changed after signing", False, good, payload=canon({"mandate_id": "mdt_vectorMandate02", "spec_version": "0.1"})),
+        case("mandate signature presented as a seal signature", False, good, typ=jws.SEAL_TYP),
+        case("header names a different key", False, jws.sign(ed, "EdDSA", "https://keys.example/jwks.json#other", jws.MANDATE_TYP, mandate)),
+        case("header claims a different algorithm", False,
+             jws.sign(ed, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate, header={"alg": "ES256", "kid": ed_kid, "typ": jws.MANDATE_TYP})),
+        case("header has an extra member", False,
+             jws.sign(ed, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate, header={"alg": "EdDSA", "crit": ["b64"], "kid": ed_kid, "typ": jws.MANDATE_TYP})),
+        case("signed by a different key", False, jws.sign(other, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate)),
+        case("ES256 signature in ASN.1 DER instead of R and S", False,
+             f"{es_protected}..{jws.b64(es.sign(es_data, ec.ECDSA(ec.hashes.SHA256(), deterministic_signing=True)))}",
+             alg="ES256", kid=es_kid, jwk=es_jwk),
+        case("EdDSA expected but the key is P-256", False, good, jwk=es_jwk),
+        case("payload attached instead of detached", False, f"{protected}.{jws.b64(mandate)}.{sig}"),
+        case("base64url padding", False, f"{protected}..{sig}=="),
+    ]
+
+
 def write(name, header, items):
     lines = ",\n".join("    " + json.dumps(i, ensure_ascii=False) for i in items)
     head = json.dumps(header, indent=2, ensure_ascii=False)[:-2]
@@ -134,7 +183,14 @@ def main():
                        "canonical JSON without \"hash\".",
         "generated_by": "scripts/make_vectors.py, using scripts/chain.py",
     }, [{**c, "hash": hash_of(c)} for c in HASHES])
-    print(f"wrote {len(canon_cases)} canon and {len(HASHES)} hash vectors")
+    signatures = signature_vectors()
+    write("signatures.json", {
+        "description": "Detached JWS signatures (SPEC.md, \"Signatures\"). Verify jws over payload (as UTF-8) "
+                       "with jwk, expecting header values alg, kid and typ; valid says whether that must succeed. "
+                       "Where seed is given (Ed25519 private key, hex), signing payload must reproduce jws exactly.",
+        "generated_by": "scripts/make_vectors.py, using scripts/jws.py and the cryptography library",
+    }, signatures)
+    print(f"wrote {len(canon_cases)} canon, {len(HASHES)} hash and {len(signatures)} signature vectors")
 
 
 if __name__ == "__main__":

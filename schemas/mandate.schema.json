@@ -71,7 +71,7 @@
         },
         "public_key_ref": {
           "type": "string",
-          "description": "Key id the agent will sign trace events with (e.g. a JWKS URL plus kid)."
+          "description": "Key id of the key the agent seals traces with, ideally a JWKS URL, '#', and the key's kid. The agent's seal signature must use exactly this key id."
         }
       }
     },
@@ -227,13 +227,13 @@
     },
     "signature": {
       "type": "object",
-      "description": "Detached JWS over the canonical JSON (RFC 8785) of the document with this field removed.",
+      "description": "The principal's signature: a detached JWS (RFC 7515) over the RFC 8785 canonical JSON of the mandate without this field. See SPEC.md, Signatures.",
       "required": ["alg", "key_id", "value"],
       "additionalProperties": false,
       "properties": {
         "alg": { "enum": ["ES256", "EdDSA"] },
-        "key_id": { "type": "string" },
-        "value": { "type": "string" }
+        "key_id": { "type": "string", "description": "Where verifiers find the public key, ideally a JWKS URL, '#', and the key's kid." },
+        "value": { "type": "string", "pattern": "^[A-Za-z0-9_-]+\\.\\.[A-Za-z0-9_-]+$", "description": "Detached compact JWS: header..signature, with the payload left out." }
       }
     }
   }

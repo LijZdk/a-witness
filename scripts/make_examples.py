@@ -21,22 +21,45 @@ is whether the journey it records obeyed the mandate.
 
 Never hand-edit the files in examples/. Change this script and run it again.
 
-Signatures are placeholders in v0.1. Real signing arrives in Phase 2.
-Canonicalisation here is sorted-key compact JSON, a stand-in for RFC 8785.
+Every example is signed for real (EdDSA), with throwaway keys derived from
+public strings: see jws.example_key. Their public keys are written to
+examples/keys.jwks.json. Anyone can derive the private keys too, so these
+signatures show the mechanism working, not who signed.
 """
 import json
 from pathlib import Path
 
 from chain import event_hash, mandate_hash as hash_mandate, sha_text
+from jws import MANDATE_TYP, SEAL_TYP, example_key, mandate_payload, public_jwk, seal_payload, sign
 
 ROOT = Path(__file__).resolve().parent.parent
 OUT = ROOT / "examples"
-PLACEHOLDER_SIG = "UNSIGNED-EXAMPLE"
+
+# Who holds which example key. A key id is a JWKS URL, "#", and the key's kid.
+KEY_IDS = {
+    "sam": "https://wallet.example/.well-known/jwks.json#prn_a91f0c3e",
+    "jo": "https://wallet.example/.well-known/jwks.json#prn_5d2e7b14",
+    "home-helper": "https://agent.example/.well-known/jwks.json#home-helper",
+    "save-wise": "https://agent.example/.well-known/jwks.json#save-wise",
+    "newco": "https://newco.example/.well-known/jwks.json#seal-2026",
+    "steadybank": "https://steadybank.example/.well-known/jwks.json#seal-2026",
+}
+
+
+def signature(holder, typ, payload):
+    key_id = KEY_IDS[holder]
+    return {"alg": "EdDSA", "key_id": key_id, "value": sign(example_key(holder), "EdDSA", key_id, typ, payload)}
+
+
+def sign_mandate(mandate, holder):
+    """The principal signs the mandate; the signature goes last."""
+    mandate["signature"] = signature(holder, MANDATE_TYP, mandate_payload(mandate))
+    return mandate
 
 
 def home_mandate(mandate_id):
     """Sam's permission slip: switch home insurance within limits, and always ask before buying."""
-    return {
+    return sign_mandate({
         "spec_version": "0.1",
         "mandate_id": mandate_id,
         "principal": {
@@ -49,7 +72,7 @@ def home_mandate(mandate_id):
             "agent_id": "agt_homehelper_01",
             "operator": "Example Agent Ltd",
             "software": {"name": "home-helper", "version": "0.3.1", "model": "example-model"},
-            "public_key_ref": "https://agent.example/.well-known/jwks.json#k1",
+            "public_key_ref": KEY_IDS["home-helper"],
         },
         "scope": {
             "product_classes": ["home_insurance"],
@@ -85,8 +108,7 @@ def home_mandate(mandate_id):
             "expires_at": "2027-01-31T23:59:59Z",
             "revocation_url": f"https://wallet.example/mandates/{mandate_id}/status",
         },
-        "signature": {"alg": "ES256", "key_id": "prn_a91f0c3e#wallet", "value": PLACEHOLDER_SIG},
-    }
+    }, "sam")
 
 
 def shopping_events(newco_valid_until=None):
@@ -183,8 +205,9 @@ def chain_events(mandate_hash, raw_events):
     return events
 
 
-def build_trace(trace_id, mandate, raw_events, sealed_at, provider_key, outcome_evidence=None):
-    """Chain the events to the mandate and seal them, signed by the agent and the chosen provider."""
+def build_trace(trace_id, mandate, raw_events, sealed_at, agent, provider, outcome_evidence=None):
+    """Chain the events to the mandate and seal them, signed by the agent and the chosen provider.
+    Each signature covers the whole trace except the signatures."""
     m_hash = hash_mandate(mandate)
     events = chain_events(m_hash, raw_events)
     trace = {
@@ -206,11 +229,12 @@ def build_trace(trace_id, mandate, raw_events, sealed_at, provider_key, outcome_
     trace["seal"] = {
         "final_event_hash": events[-1]["hash"],
         "sealed_at": sealed_at,
-        "signatures": [
-            {"signer": "agent", "alg": "ES256", "key_id": f"{mandate['agent']['agent_id']}#k1", "value": PLACEHOLDER_SIG},
-            {"signer": "provider", "alg": "ES256", "key_id": provider_key, "value": PLACEHOLDER_SIG},
-        ],
     }
+    payload = seal_payload(trace)
+    trace["seal"]["signatures"] = [
+        {"signer": "agent", **signature(agent, SEAL_TYP, payload)},
+        {"signer": "provider", **signature(provider, SEAL_TYP, payload)},
+    ]
     return trace
 
 
@@ -231,7 +255,7 @@ def switch_example():
             "shown_summary_hash": sha_text("Switch to NewCo Home Plus, 298 GBP/yr, excess 200 GBP. Approve?"),
         }),
     ] + purchase_events(("2026-10-02T08:14:20Z", "2026-10-02T08:14:25Z"))
-    trace = build_trace("trc_Rn4Vb8Ty2Mk6", mandate, raw, "2026-10-02T08:14:30Z", "prov_newco#k1", outcome_evidence={
+    trace = build_trace("trc_Rn4Vb8Ty2Mk6", mandate, raw, "2026-10-02T08:14:30Z", "home-helper", "newco", outcome_evidence={
         "products_and_services": {"event_seqs": [4, 5], "note": "Selected product met all stated requirements."},
         "price_and_value": {"event_seqs": [1, 6, 8], "note": "Renewal rise caught and a cheaper compliant option chosen."},
         "consumer_understanding": {"event_seqs": [7, 9], "note": "IPID summarised and shown before confirmation."},
@@ -263,7 +287,7 @@ def no_confirmation_example():
             "related_quote_id": "q_newco",
         }),
     ] + purchase_events(("2026-10-02T11:45:20Z", "2026-10-02T11:45:25Z"))
-    trace = build_trace("trc_Hy3Qm7Xe9Bf2", mandate, raw, "2026-10-02T11:45:30Z", "prov_newco#k1")
+    trace = build_trace("trc_Hy3Qm7Xe9Bf2", mandate, raw, "2026-10-02T11:45:30Z", "home-helper", "newco")
     write("home-insurance-no-confirmation", mandate, trace)
 
 
@@ -290,7 +314,7 @@ def savings_example():
             "agent_id": "agt_savewise_01",
             "operator": "Example Agent Ltd",
             "software": {"name": "save-wise", "version": "1.2.0", "model": "example-model"},
-            "public_key_ref": "https://agent.example/.well-known/jwks.json#k2",
+            "public_key_ref": KEY_IDS["save-wise"],
         },
         "scope": {
             "product_classes": ["fixed_rate_savings"],
@@ -327,8 +351,8 @@ def savings_example():
             "expires_at": "2026-10-20T23:59:59Z",
             "revocation_url": f"https://wallet.example/mandates/{mandate_id}/status",
         },
-        "signature": {"alg": "ES256", "key_id": "prn_5d2e7b14#wallet", "value": PLACEHOLDER_SIG},
     }
+    sign_mandate(mandate, "jo")
 
     def bond(quote_id, provider, frn, product, aer, term, fscs, licence, **extra):
         return {
@@ -402,7 +426,7 @@ def savings_example():
             "deadline": "2026-10-26T23:59:59Z",
         }),
     ]
-    trace = build_trace("trc_Pv6Lc3Zn9Wa5", mandate, raw, "2026-10-12T19:22:15Z", "prov_steadybank#k1", outcome_evidence={
+    trace = build_trace("trc_Pv6Lc3Zn9Wa5", mandate, raw, "2026-10-12T19:22:15Z", "save-wise", "steadybank", outcome_evidence={
         "products_and_services": {"event_seqs": [5, 6], "note": "Selected bond met both requirements, including FSCS protection."},
         "price_and_value": {"event_seqs": [1, 7, 9], "note": "Low rollover rate caught; best protected rate within the term limit chosen."},
         "consumer_understanding": {"event_seqs": [8, 10], "note": "Summary box shown, including no early access, before confirmation."},
@@ -411,7 +435,15 @@ def savings_example():
     write("fixed-rate-savings-switch", mandate, trace)
 
 
+def write_keys():
+    """The public half of every example key, by full key id, for verifiers."""
+    keys = [public_jwk(example_key(holder).public_key(), key_id) for holder, key_id in KEY_IDS.items()]
+    (OUT / "keys.jwks.json").write_text(json.dumps({"keys": keys}, indent=2) + "\n")
+    print(f"wrote keys.jwks.json; {len(keys)} public keys")
+
+
 if __name__ == "__main__":
     switch_example()
     no_confirmation_example()
     savings_example()
+    write_keys()

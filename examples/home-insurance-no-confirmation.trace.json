@@ -3,7 +3,7 @@
   "trace_id": "trc_Hy3Qm7Xe9Bf2",
   "mandate_ref": {
     "mandate_id": "mdt_Wc5Jp1Ns8Gd4",
-    "mandate_hash": "sha256:c36415885c6532920ef6b62b2c298295d3586148659dd44c2f2b61de05bdf87e"
+    "mandate_hash": "sha256:b34acd7f954f55b602c117faed1deed8e5c9f9c645b679ab17b92c50ca2a31f7"
   },
   "journey": {
     "action": "switch",
@@ -23,8 +23,8 @@
         "summary": "Renewal came in at 389 GBP, up from 312 GBP. Check if I can do better, same cover.",
         "utterance_hash": "sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff"
       },
-      "prev_hash": "sha256:c36415885c6532920ef6b62b2c298295d3586148659dd44c2f2b61de05bdf87e",
-      "hash": "sha256:b64b4cd9cd22743576fcccf883c220dd95cb44a3d825056e841092bcc3bbc3ac"
+      "prev_hash": "sha256:b34acd7f954f55b602c117faed1deed8e5c9f9c645b679ab17b92c50ca2a31f7",
+      "hash": "sha256:336675cbb3987d0e96dd779ff7412e8677ffed3cc508c02b3b5ad67fc275492a"
     },
     {
       "seq": 1,
@@ -54,8 +54,8 @@
           ]
         }
       },
-      "prev_hash": "sha256:b64b4cd9cd22743576fcccf883c220dd95cb44a3d825056e841092bcc3bbc3ac",
-      "hash": "sha256:08cf3a96b70c2e30dc6b547748d609138dbbcc8ecd1457aa19ad3a9e82723c59"
+      "prev_hash": "sha256:336675cbb3987d0e96dd779ff7412e8677ffed3cc508c02b3b5ad67fc275492a",
+      "hash": "sha256:e5d301d606c8060b71b48b089e5b9edef1363395205bad48928123db2fe5592a"
     },
     {
       "seq": 2,
@@ -82,8 +82,8 @@
         },
         "valid_until": "2026-10-02T12:00:00Z"
       },
-      "prev_hash": "sha256:08cf3a96b70c2e30dc6b547748d609138dbbcc8ecd1457aa19ad3a9e82723c59",
-      "hash": "sha256:5d12520a2ca4e41c810a5424ac8e07ff2912f37a239c0b71655a72bf686ad2cf"
+      "prev_hash": "sha256:e5d301d606c8060b71b48b089e5b9edef1363395205bad48928123db2fe5592a",
+      "hash": "sha256:bdf88142b8889f62ae20d2081c0938722eb88a52a329d740a31660965780d102"
     },
     {
       "seq": 3,
@@ -108,8 +108,8 @@
           ]
         }
       },
-      "prev_hash": "sha256:5d12520a2ca4e41c810a5424ac8e07ff2912f37a239c0b71655a72bf686ad2cf",
-      "hash": "sha256:33eb9207327d1b48a7beb78b8ce903db4b9ccb6adab434d6e6eed29c458d6e1c"
+      "prev_hash": "sha256:bdf88142b8889f62ae20d2081c0938722eb88a52a329d740a31660965780d102",
+      "hash": "sha256:90f89fa403577f416017cf737959aa5c37739ded7896f4b5e54b623b35a664e2"
     },
     {
       "seq": 4,
@@ -130,8 +130,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:33eb9207327d1b48a7beb78b8ce903db4b9ccb6adab434d6e6eed29c458d6e1c",
-      "hash": "sha256:768cef3c10760b2966949aed0b1c4626aeae3310d760857ab7ad3fd0eda2ccdf"
+      "prev_hash": "sha256:90f89fa403577f416017cf737959aa5c37739ded7896f4b5e54b623b35a664e2",
+      "hash": "sha256:4594845861473fcac5abbb1cfc4d3607891ff2a2214071c2d1a4801256844530"
     },
     {
       "seq": 5,
@@ -152,8 +152,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:768cef3c10760b2966949aed0b1c4626aeae3310d760857ab7ad3fd0eda2ccdf",
-      "hash": "sha256:f108597da50c2bbf9897d7a4961636b35b0fb58aa24e899b6c1acc97bf811201"
+      "prev_hash": "sha256:4594845861473fcac5abbb1cfc4d3607891ff2a2214071c2d1a4801256844530",
+      "hash": "sha256:77099a0a41d1f3ab205fd7c7d3a69f2a5b3134cb7a91423f0bc903bfbe8e4628"
     },
     {
       "seq": 6,
@@ -179,8 +179,8 @@
         ],
         "market_coverage_note": "3 providers queried via MCP. Not whole of market."
       },
-      "prev_hash": "sha256:f108597da50c2bbf9897d7a4961636b35b0fb58aa24e899b6c1acc97bf811201",
-      "hash": "sha256:382c25e0fc4b2fcac6af90b7c621ad3af2ce5360b8af0e4237c702d3fd70e108"
+      "prev_hash": "sha256:77099a0a41d1f3ab205fd7c7d3a69f2a5b3134cb7a91423f0bc903bfbe8e4628",
+      "hash": "sha256:920c37a8894bb115afdc94a42b07eea3532cdd52f17c1b1d5861f7432f3cdd64"
     },
     {
       "seq": 7,
@@ -194,8 +194,8 @@
         "presented_to": "principal",
         "plain_summary": "Covers buildings and contents with accidental damage. 200 GBP excess. Not covered: wear and tear, unoccupied over 60 days."
       },
-      "prev_hash": "sha256:382c25e0fc4b2fcac6af90b7c621ad3af2ce5360b8af0e4237c702d3fd70e108",
-      "hash": "sha256:a556348f5b57e4427f6b2c9490b12618b144e4f29bddfa24e35c5bd588ac44c2"
+      "prev_hash": "sha256:920c37a8894bb115afdc94a42b07eea3532cdd52f17c1b1d5861f7432f3cdd64",
+      "hash": "sha256:d880b0eafb4b3f9421d2df7d1bd85be50690bdf309e4dd4bd5f164b0f9da8cb9"
     },
     {
       "seq": 8,
@@ -207,8 +207,8 @@
         "rationale": "Cheapest option that meets both must-haves. Saves 91 GBP versus renewal and lowers the excess.",
         "within_mandate_limits": true
       },
-      "prev_hash": "sha256:a556348f5b57e4427f6b2c9490b12618b144e4f29bddfa24e35c5bd588ac44c2",
-      "hash": "sha256:a61c49937bfde4b743d5c15bf551043afdac24e97c4295b02ba7c94ce30fceeb"
+      "prev_hash": "sha256:d880b0eafb4b3f9421d2df7d1bd85be50690bdf309e4dd4bd5f164b0f9da8cb9",
+      "hash": "sha256:4667956877a041165c3457b7cb28f9995303124dfc0cfd4e8ba5fcf57f6873a5"
     },
     {
       "seq": 9,
@@ -221,8 +221,8 @@
         "detail": "Sent Sam the NewCo summary and asked for approval by passkey before switching.",
         "related_quote_id": "q_newco"
       },
-      "prev_hash": "sha256:a61c49937bfde4b743d5c15bf551043afdac24e97c4295b02ba7c94ce30fceeb",
-      "hash": "sha256:5abaf2c10c007623c8c1e5b4c10cc8a5fa6130d7c025de3a2fdff570a7c23fdc"
+      "prev_hash": "sha256:4667956877a041165c3457b7cb28f9995303124dfc0cfd4e8ba5fcf57f6873a5",
+      "hash": "sha256:0a75b9b2eaf05fd24bde2814a811d8ca5dce7d097faf6e4e32bfff82191886d2"
     },
     {
       "seq": 10,
@@ -235,8 +235,8 @@
         "retryable": false,
         "related_quote_id": "q_newco"
       },
-      "prev_hash": "sha256:5abaf2c10c007623c8c1e5b4c10cc8a5fa6130d7c025de3a2fdff570a7c23fdc",
-      "hash": "sha256:2e7a582ec2152b6226f07acc01bd4ee77dd1eba6480a0b7f88f009df4974f7ec"
+      "prev_hash": "sha256:0a75b9b2eaf05fd24bde2814a811d8ca5dce7d097faf6e4e32bfff82191886d2",
+      "hash": "sha256:5cea8bff479d2701cd1855fa429d953d7a0ddf270eb9b68a0d39d707bd8a92da"
     },
     {
       "seq": 11,
@@ -252,8 +252,8 @@
         },
         "payment_mandate_ref": "ap2:pm_example_123"
       },
-      "prev_hash": "sha256:2e7a582ec2152b6226f07acc01bd4ee77dd1eba6480a0b7f88f009df4974f7ec",
-      "hash": "sha256:98d7cdf233457eb48b7ce3b5ce69fad1aac92a73715989d80bd221c4f8e50a15"
+      "prev_hash": "sha256:5cea8bff479d2701cd1855fa429d953d7a0ddf270eb9b68a0d39d707bd8a92da",
+      "hash": "sha256:8d01ecf53b7a9d6445c1a655fd478376624999de08129924d4b6471694897a0d"
     },
     {
       "seq": 12,
@@ -265,25 +265,25 @@
         "detail": "14 day cooling-off period applies.",
         "deadline": "2026-10-16T23:59:59Z"
       },
-      "prev_hash": "sha256:98d7cdf233457eb48b7ce3b5ce69fad1aac92a73715989d80bd221c4f8e50a15",
-      "hash": "sha256:77b502a81dfb80ab884a01dc619142522ae394204315604ee793c5c30745498b"
+      "prev_hash": "sha256:8d01ecf53b7a9d6445c1a655fd478376624999de08129924d4b6471694897a0d",
+      "hash": "sha256:9d02b35edcdbf69b6142d5ba2a2b6dc4b563c861695df0cb2d85172a35c102a8"
     }
   ],
   "seal": {
-    "final_event_hash": "sha256:77b502a81dfb80ab884a01dc619142522ae394204315604ee793c5c30745498b",
+    "final_event_hash": "sha256:9d02b35edcdbf69b6142d5ba2a2b6dc4b563c861695df0cb2d85172a35c102a8",
     "sealed_at": "2026-10-02T11:45:30Z",
     "signatures": [
       {
         "signer": "agent",
-        "alg": "ES256",
-        "key_id": "agt_homehelper_01#k1",
-        "value": "UNSIGNED-EXAMPLE"
+        "alg": "EdDSA",
+        "key_id": "https://agent.example/.well-known/jwks.json#home-helper",
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vYWdlbnQuZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jaG9tZS1oZWxwZXIiLCJ0eXAiOiJhLXdpdG5lc3Mtc2VhbCJ9..8H31s_94zoU1gF9xXN5jQzRkw4BAatPI1JeLOgtUBV2iEhfC5exqJ5iJ063amSxoY-CdVLpzdEbK2M1b4UTFCg"
       },
       {
         "signer": "provider",
-        "alg": "ES256",
-        "key_id": "prov_newco#k1",
-        "value": "UNSIGNED-EXAMPLE"
+        "alg": "EdDSA",
+        "key_id": "https://newco.example/.well-known/jwks.json#seal-2026",
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vbmV3Y28uZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jc2VhbC0yMDI2IiwidHlwIjoiYS13aXRuZXNzLXNlYWwifQ..s1lE-H725cRf7QrB7Xty35BL7u4p02ig6uh4XoiPV82oIcNw_TtqFme3-KOkRyVsrwxSMOrVNeyIx2tdnQ4eAA"
       }
     ]
   }

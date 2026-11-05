@@ -11,16 +11,18 @@ Checks, in order:
   6. Every quote_received has a unique quote_id, and every quote an event
      refers to was received earlier in the trace.
   7. The seal covers the final event.
-  8. Only if the record is intact: the journey obeyed the mandate. So far
+  8. With --keys: the principal signed the mandate, every seal signature is
+     valid, and the agent the mandate names signed the seal with its key.
+  9. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
 
-Checks 1-7 ask "is this record genuine?". Check 8 asks "did the agent do
+Checks 1-8 ask "is this record genuine?". Check 9 asks "did the agent do
 what it was allowed to?". The report says which kind of failure it found.
 
-Signature checking is a Phase 2 job. The other mandate rules (price limits,
-scope, expiry and so on) arrive with the Phase 3 verifier.
+The other mandate rules (price limits, scope, expiry and so on) arrive with
+the Phase 3 verifier.
 
-Usage: python scripts/validate.py <name>.mandate.json <name>.trace.json
+Usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]
 Exit codes: 0 pass, 1 fail, 2 bad usage.
 """
 import json
@@ -31,6 +33,7 @@ from pathlib import Path
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
+import jws
 from chain import event_hash, mandate_hash
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -195,16 +198,58 @@ def fail(problems, headline=""):
     return 1
 
 
+def signature_problems(mandate, trace, keys):
+    """SPEC.md rule 15. keys maps key ids to public keys: which keys to trust."""
+    problems = []
+
+    def check(sig, where, typ, payload):
+        key = keys.get(sig["key_id"])
+        if key is None:
+            problems.append(f"{where}: key {sig['key_id']!r} is not in the key file")
+            return False
+        try:
+            jws.verify(sig["value"], payload, key, sig["alg"], sig["key_id"], typ)
+            return True
+        except ValueError as e:
+            problems.append(f"{where} does not verify: {e}")
+            return False
+
+    check(mandate["signature"], "mandate signature", jws.MANDATE_TYP, jws.mandate_payload(mandate))
+    agent_key = mandate["agent"].get("public_key_ref")
+    payload = jws.seal_payload(trace)
+    agent_signed = False
+    for i, sig in enumerate(trace["seal"]["signatures"]):
+        valid = check(sig, f"seal signature {i} ({sig['signer']})", jws.SEAL_TYP, payload)
+        if sig["signer"] != "agent":
+            continue
+        if agent_key and sig["key_id"] != agent_key:
+            problems.append(f"seal signature {i} (agent) uses key {sig['key_id']!r}, but the mandate names the agent's key as {agent_key!r}")
+            continue
+        agent_signed = agent_signed or valid
+    if not agent_signed:
+        problems.append("the seal has no valid signature from the agent the mandate names")
+    return problems
+
+
+USAGE = "usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]"
+
+
 def main(argv):
-    if len(argv) != 2:
-        print("usage: python scripts/validate.py <name>.mandate.json <name>.trace.json", file=sys.stderr)
+    keys_path = None
+    if len(argv) == 4 and argv[2] == "--keys":
+        keys_path = argv[3]
+    elif len(argv) != 2:
+        print(USAGE, file=sys.stderr)
         return 2
-    mandate_path, trace_path = argv
+    mandate_path, trace_path = argv[:2]
 
     try:
         mandate, trace = load(mandate_path), load(trace_path)
+        keys = jws.load_jwks(keys_path) if keys_path else None
     except Unreadable as e:
         return fail([str(e)])
+    except (OSError, ValueError, KeyError) as e:
+        return fail([f"{keys_path}: cannot read the key file ({e})"])
 
     name = Path(trace_path).name
 
@@ -215,6 +260,8 @@ def main(argv):
 
     problems = (chain_problems(mandate, trace) + time_problems(trace)
                 + evidence_problems(trace) + reference_problems(trace))
+    if keys is not None:
+        problems += signature_problems(mandate, trace, keys)
     if problems:
         return fail(problems, f"{name}: the record is broken or has been tampered with")
 
@@ -224,7 +271,8 @@ def main(argv):
 
     setting = mandate["human_confirmation"]
     confirmation = "confirmation rule met" if setting == "always" else f"confirmation rule not checked for '{setting}' yet"
-    print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {confirmation}")
+    signatures = "signatures valid" if keys is not None else "signatures NOT checked (no --keys)"
+    print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}")
     return 0
 
 

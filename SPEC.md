@@ -4,9 +4,9 @@ This document explains every field in the two a-witness formats, the **mandate**
 
 The JSON Schemas in [`schemas/`](schemas/) are the machine-readable definition. Where this document and a schema disagree, that is a bug; please open an issue.
 
-> **Status: draft, not production ready.** Signatures are placeholders until later in Phase 2 of the [roadmap](ROADMAP.md) (see [Signatures](#signatures)). Field names may still change before v1.0.
+> **Status: draft, not production ready.** Field names may still change before v1.0.
 
-**Contents:** [Words used here](#words-used-here) · [Conventions](#conventions) · [Mandate](#mandate) · [Trace](#trace) · [Event types](#event-types) · [Rules across documents](#rules-across-documents) · [Hashing](#hashing) · [Verifying](#verifying) · [Personal data](#personal-data) · [Versioning](#versioning)
+**Contents:** [Words used here](#words-used-here) · [Conventions](#conventions) · [Mandate](#mandate) · [Trace](#trace) · [Event types](#event-types) · [Rules across documents](#rules-across-documents) · [Hashing](#hashing) · [Signatures](#signatures) · [Verifying](#verifying) · [Personal data](#personal-data) · [Versioning](#versioning)
 
 ---
 
@@ -64,7 +64,7 @@ Schema: [`schemas/mandate.schema.json`](schemas/mandate.schema.json). Example: [
 | `human_confirmation` | When the agent must get a live yes from the principal before a binding action. See below. |
 | `consent` | How and when the principal agreed. See below. |
 | `validity` | When the mandate starts and stops. See below. |
-| `signature` | The principal's signature over the rest of the mandate. Placeholder in v0.1. See [Signatures](#signatures). |
+| `signature` | The principal's signature over the rest of the mandate: its `alg`, `key_id` and `value`. See [Signatures](#signatures). |
 
 ### `principal`
 
@@ -84,7 +84,7 @@ Pseudonymous by design. No names, addresses or account numbers belong in a manda
 | `agent_id` | Identifier of the agent. |
 | `operator` | The organisation or person responsible for running the agent. |
 | `software` | *Optional.* `name`, `version` and `model` (the underlying AI model, if known), each optional. Lets a reviewer tell which version of the agent made a decision. |
-| `public_key_ref` | *Optional.* Which key the agent will sign with, e.g. a JWKS URL and key id. |
+| `public_key_ref` | *Optional, strongly recommended.* The key id of the key the agent seals traces with, e.g. `https://agent.example/.well-known/jwks.json#home-helper`. When present, the agent's seal signature must use exactly this key, which ties every trace to the agent the principal authorised. |
 
 ### `scope`
 
@@ -219,9 +219,9 @@ This section is a **claim, not proof**. Whoever writes it is pointing at their o
 
 | Field | Meaning |
 |---|---|
-| `final_event_hash` | The `hash` of the last event. Signing this fixes the entire chain behind it. |
+| `final_event_hash` | The `hash` of the last event, which fixes the entire chain behind it. |
 | `sealed_at` | When the trace was sealed. Not earlier than the last event. |
-| `signatures` | At least one. Each has a `signer` (`agent`, `provider`, `principal` or `witness_service`), an `alg` (`ES256` or `EdDSA`), a `key_id` and the signature `value`. The agent should always sign, and the provider should too, so both sides hold the same record. Placeholder in v0.1. |
+| `signatures` | At least one. Each has a `signer` (`agent`, `provider`, `principal` or `witness_service`), an `alg` (`ES256` or `EdDSA`), a `key_id` and the signature `value`. Each covers the **whole trace** except the signatures themselves. The agent must sign, and the provider should too, so both sides hold the same record. See [Signatures](#signatures). |
 
 ---
 
@@ -363,7 +363,7 @@ Something went wrong. Recording errors honestly is part of the record: in the `h
 
 ## Rules across documents
 
-These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted. The Go reference implementation, `witness.Verify`, enforces rules 1 to 8.
+These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted. The Go reference implementation, `witness.Verify`, enforces rules 1 to 8 and 15.
 
 | # | Rule | Checked in v0.1 |
 |---|---|---|
@@ -381,7 +381,7 @@ These are the rules no single schema can express. The last column says whether t
 | 12 | No binding action exceeds `max_commitment`, `max_term_months` or `max_transactions`; no renewal rise exceeds `max_price_increase_pct`; no savings rate falls below `min_aer`. | No |
 | 13 | No chosen quote failed a requirement check. | No |
 | 14 | `human_confirmation: "never"` is flagged. `above_limits` is enforced. | No |
-| 15 | Signatures on the mandate and seal are valid. | No (Phase 2) |
+| 15 | **Signatures.** The principal's signature on the mandate is valid. Every seal signature is valid. At least one valid seal signature is from the `agent`, and if the mandate names `agent.public_key_ref`, that signature uses exactly that key. Keys must be known to the verifier. | Yes, with `--keys` |
 
 ---
 
@@ -419,13 +419,45 @@ Implementations: Go, [`witness/canon`](witness/canon); Python, the [`rfc8785`](h
 
 [`testdata/vectors/`](testdata/vectors/) holds language-neutral vectors for canonical JSON (including inputs that must be rejected), number formatting, and each kind of hash, with notes on using them. The files in [`examples/`](examples/) are vectors too: an implementation that verifies them is hashing correctly.
 
-### What the chain does and does not prove
+### What the chain and the signatures each prove
 
-Changing any event changes its hash, which no longer matches the next event's `prev_hash`, and so on to the seal. A careless edit is therefore caught. A deliberate rewrite that recomputes every hash afterwards is caught only by the signatures: the rewritten chain ends in a different `final_event_hash`, which the original signers never signed. **v0.1 signatures are placeholders, so a v0.1 trace detects edits but does not yet prevent a determined rewrite.**
+Changing any event changes its hash, which no longer matches the next event's `prev_hash`, and so on to the seal. A careless edit is therefore caught by the hashes alone. But anyone can edit an event and recompute every hash after it; the hashes cannot stop that. **The signatures can.** Every seal signature covers the whole trace, so any change, to an event, to `journey`, to `outcome_evidence` or to the seal's own fields, means the signatures no longer verify, and a forger cannot re-sign without the signers' private keys.
 
-### Signatures
+A signature proves only that the holder of a key signed. That it was *the agent*, *the provider* or *the principal* depends on the verifier trusting that the key belongs to them: see [Keys](#keys).
 
-The mandate's `signature` and each entry in `seal.signatures` will carry a detached JWS (RFC 7515) made with ES256 or EdDSA. The mandate is signed over its canonical form without the `signature` field; the seal signs `final_event_hash`. Keys are found through `key_id`, e.g. a JWKS URL and key id. The exact signing input is fixed in Phase 2; until then every `value` is the placeholder `UNSIGNED-EXAMPLE`.
+---
+
+## Signatures
+
+### What is signed
+
+| Signature | Signs | `typ` |
+|---|---|---|
+| The mandate's `signature`, by the principal | The mandate's canonical JSON **without** its `signature` field: the same bytes as the mandate hash input. | `a-witness-mandate` |
+| Each entry in `seal.signatures` | The **whole trace** in canonical JSON, with the `seal` object present but **without** its `signatures` array. This covers `trace_id`, `mandate_ref`, `journey`, every event, `outcome_evidence`, `final_event_hash` and `sealed_at`. | `a-witness-seal` |
+
+Every seal signer signs the same bytes, so signatures do not cover each other and can be added independently and in any order: the agent signs when it closes the journey, the provider when it receives the trace. Nothing but a signature may be added after sealing; in particular, `outcome_evidence` must be written **before** the seal.
+
+### How a signature is made
+
+Each `value` is a detached JWS in compact form ([RFC 7515](https://www.rfc-editor.org/rfc/rfc7515), appendix F): `header..signature`, with the payload left out because the verifier rebuilds it from the document.
+
+1. The **header** is a JSON object with exactly three members: `alg` (`ES256` or `EdDSA`), `kid` (the signature's `key_id`) and `typ` (from the table above). Implementations should write it in canonical JSON, which makes Ed25519 signatures byte-for-byte reproducible.
+2. The **signing input** is `BASE64URL(header) || "." || BASE64URL(payload)`, with base64url as in RFC 7515: no padding.
+3. **ES256**: ECDSA on P-256 with SHA-256, the signature being R and S as 32 bytes each (64 bytes, not ASN.1 DER). **EdDSA**: Ed25519 (64 bytes).
+4. The `value` is `BASE64URL(header) || ".." || BASE64URL(signature)`.
+
+A verifier **must** refuse a signature whose header has any member besides `alg`, `kid` and `typ`, or whose header values differ from the signature's `alg`, its `key_id` and the expected `typ`. The `typ` check means a mandate signature can never pass as a seal signature.
+
+### Keys
+
+A `key_id` names a public key. The recommended form is a [JWKS](https://www.rfc-editor.org/rfc/rfc7517) URL, `#`, and the key's `kid`: `https://agent.example/.well-known/jwks.json#home-helper`. Keys are EC on P-256 (for ES256) or OKP Ed25519 (for EdDSA).
+
+Which keys to trust for which parties is the verifier's decision, and the most important one it makes. The spec ties one key down itself: the mandate, signed by the principal, names the agent's key in `agent.public_key_ref`, and the agent's seal signature must use it. A verifier should obtain the principal's and provider's keys from a source it trusts, such as the provider's published JWKS or the principal's wallet.
+
+The Go implementation offers a fixed `KeySet` (for example from a local JWKS file, where each key's `kid` is its full `key_id`) and a `JWKSFetcher`, which fetches `https://…#kid` key ids over HTTPS only. `scripts/validate.py` reads a local JWKS file given with `--keys`.
+
+The examples are signed with throwaway Ed25519 keys derived from public strings, published in [`examples/keys.jwks.json`](examples/keys.jwks.json). Anyone can derive their private keys, so the example signatures show the mechanism, not who signed.
 
 ---
 
@@ -433,16 +465,16 @@ The mandate's `signature` and each entry in `seal.signatures` will carry a detac
 
 A verifier answers two separate questions, and reports which one failed:
 
-1. **Is this record genuine?** Schemas, chain, timestamps, seal: rules 1–8 and 15.
+1. **Is this record genuine?** Schemas, chain, timestamps, references, seal and signatures: rules 1–8 and 15.
 2. **Did the agent do what it was allowed to?** The mandate rules: 9–14.
 
 The second question only makes sense once the first is answered yes, because rules checked against a tampered record prove nothing. `scripts/validate.py` reports one of four results:
 
 | Result | Meaning |
 |---|---|
-| `PASS` | The record is genuine and every rule marked "Yes" in [the table above](#rules-across-documents) is met. If the confirmation rule could not be checked for this mandate (any setting but `always`), the line says so. |
+| `PASS` | The record is genuine and every rule marked "Yes" in [the table above](#rules-across-documents) is met. The line says if signatures were not checked (no `--keys`) or if the confirmation rule could not be checked for this mandate (any setting but `always`). |
 | `FAIL … the record is malformed` | A document does not match its schema. |
-| `FAIL … the record is broken or has been tampered with` | The chain, timestamps, references or seal do not hold together. |
+| `FAIL … the record is broken or has been tampered with` | The chain, timestamps, references, seal or signatures do not hold together. |
 | `FAIL … the record is intact, but the agent broke its mandate` | The record is genuine, and it shows the agent breaking a rule. |
 
 A pass is evidence, not a verdict. It shows the record is intact and the checked rules were followed. Whether the outcome was good for the principal is for firms, ombudsmen and regulators to judge.

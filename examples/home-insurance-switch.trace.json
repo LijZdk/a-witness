@@ -3,7 +3,7 @@
   "trace_id": "trc_Rn4Vb8Ty2Mk6",
   "mandate_ref": {
     "mandate_id": "mdt_7Hq2Lk9Xw3Pz",
-    "mandate_hash": "sha256:d67752decec4ff10bc211d493779bb27a56acf96c2e303aceeccb49c799c1bca"
+    "mandate_hash": "sha256:c79dc996977d0555e43ac07b1afd4f7cc80c5a7dd2a8c3bd32f6749b7a356a5c"
   },
   "journey": {
     "action": "switch",
@@ -23,8 +23,8 @@
         "summary": "Renewal came in at 389 GBP, up from 312 GBP. Check if I can do better, same cover.",
         "utterance_hash": "sha256:c98347474205378879e9e1f37612aa68dc81ec382652d712c128a57aaf61daff"
       },
-      "prev_hash": "sha256:d67752decec4ff10bc211d493779bb27a56acf96c2e303aceeccb49c799c1bca",
-      "hash": "sha256:b96d9bb2654d1dcca9bbb5625a54b7955d634a160657c004d9537361a9176821"
+      "prev_hash": "sha256:c79dc996977d0555e43ac07b1afd4f7cc80c5a7dd2a8c3bd32f6749b7a356a5c",
+      "hash": "sha256:6975218e3ae8bc545bebf2405914dbaf56691ed1da6d20ced7e0eab9c28095db"
     },
     {
       "seq": 1,
@@ -54,8 +54,8 @@
           ]
         }
       },
-      "prev_hash": "sha256:b96d9bb2654d1dcca9bbb5625a54b7955d634a160657c004d9537361a9176821",
-      "hash": "sha256:a0e8e09910276e36128942b2832c914bd76a2b36c5cc1f9aab72c46d49b0671b"
+      "prev_hash": "sha256:6975218e3ae8bc545bebf2405914dbaf56691ed1da6d20ced7e0eab9c28095db",
+      "hash": "sha256:f49198caf76b83b86b8db8094c45b6863621deae33e6a41cf71e69716c59e194"
     },
     {
       "seq": 2,
@@ -81,8 +81,8 @@
           ]
         }
       },
-      "prev_hash": "sha256:a0e8e09910276e36128942b2832c914bd76a2b36c5cc1f9aab72c46d49b0671b",
-      "hash": "sha256:dac706f42f3fb31a2c7b28ac8259c68c6cb23e870402e476fcc2e53526d570d2"
+      "prev_hash": "sha256:f49198caf76b83b86b8db8094c45b6863621deae33e6a41cf71e69716c59e194",
+      "hash": "sha256:df7244b229ccacbe0c2edf21a92b70f29d66c11536685648a63338c26092be70"
     },
     {
       "seq": 3,
@@ -107,8 +107,8 @@
           ]
         }
       },
-      "prev_hash": "sha256:dac706f42f3fb31a2c7b28ac8259c68c6cb23e870402e476fcc2e53526d570d2",
-      "hash": "sha256:3d68e7c356358b3284746c699e08522b0e9ce36be7037e9fdbf8150ba4375358"
+      "prev_hash": "sha256:df7244b229ccacbe0c2edf21a92b70f29d66c11536685648a63338c26092be70",
+      "hash": "sha256:4c3ab3575f524076aeae9d799e9d81ded34417fbb53f27792f451577d43194a5"
     },
     {
       "seq": 4,
@@ -129,8 +129,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:3d68e7c356358b3284746c699e08522b0e9ce36be7037e9fdbf8150ba4375358",
-      "hash": "sha256:5884b0420801e5e8277e68e067d3b83a23329da466a95cbafd7c95eedb725201"
+      "prev_hash": "sha256:4c3ab3575f524076aeae9d799e9d81ded34417fbb53f27792f451577d43194a5",
+      "hash": "sha256:a7a65a9da3f582750249242b08a2148e73e9a94b8055c7b5063aff03a9700d14"
     },
     {
       "seq": 5,
@@ -151,8 +151,8 @@
           }
         ]
       },
-      "prev_hash": "sha256:5884b0420801e5e8277e68e067d3b83a23329da466a95cbafd7c95eedb725201",
-      "hash": "sha256:97f8e75466a3e5c730ede2001f89d71e7436a3c60385f09b70670d3b05638aeb"
+      "prev_hash": "sha256:a7a65a9da3f582750249242b08a2148e73e9a94b8055c7b5063aff03a9700d14",
+      "hash": "sha256:2926af7d6096da7e8d1f103177d348dffe60d69289f4d93a298fa02bc2335bd1"
     },
     {
       "seq": 6,
@@ -178,8 +178,8 @@
         ],
         "market_coverage_note": "3 providers queried via MCP. Not whole of market."
       },
-      "prev_hash": "sha256:97f8e75466a3e5c730ede2001f89d71e7436a3c60385f09b70670d3b05638aeb",
-      "hash": "sha256:59f424c1ea7ce8c947eba663c2bc01f53ed282799956d7683d249ce15a319579"
+      "prev_hash": "sha256:2926af7d6096da7e8d1f103177d348dffe60d69289f4d93a298fa02bc2335bd1",
+      "hash": "sha256:b00515f45de8b9b86b906e1387c027f9e1ebea2d89f2ae1c8063553fcb5f7932"
     },
     {
       "seq": 7,
@@ -193,8 +193,8 @@
         "presented_to": "principal",
         "plain_summary": "Covers buildings and contents with accidental damage. 200 GBP excess. Not covered: wear and tear, unoccupied over 60 days."
       },
-      "prev_hash": "sha256:59f424c1ea7ce8c947eba663c2bc01f53ed282799956d7683d249ce15a319579",
-      "hash": "sha256:8a01823bbd1ac3853c0bcce25af956c43eeb56480040a40bfe35f9de63e65743"
+      "prev_hash": "sha256:b00515f45de8b9b86b906e1387c027f9e1ebea2d89f2ae1c8063553fcb5f7932",
+      "hash": "sha256:586a2be673e84c2629de7814b16dd45d7a3ffa4db219c30e18697a381fc5a4ed"
     },
     {
       "seq": 8,
@@ -206,8 +206,8 @@
         "rationale": "Cheapest option that meets both must-haves. Saves 91 GBP versus renewal and lowers the excess.",
         "within_mandate_limits": true
       },
-      "prev_hash": "sha256:8a01823bbd1ac3853c0bcce25af956c43eeb56480040a40bfe35f9de63e65743",
-      "hash": "sha256:cdad6dc37f60156468b2bd6b7af637b2a573bf2a5951bdfb33e46e862cc23487"
+      "prev_hash": "sha256:586a2be673e84c2629de7814b16dd45d7a3ffa4db219c30e18697a381fc5a4ed",
+      "hash": "sha256:1f4722b24e544d87841306dac88a5185dc38c1780eab523ca4da9084ba69e6f1"
     },
     {
       "seq": 9,
@@ -219,8 +219,8 @@
         "decision": "approved",
         "shown_summary_hash": "sha256:b4253799e6c4eb8f0998574ebcce44e9f28c1f2974d4889ca2f50cf780d047d8"
       },
-      "prev_hash": "sha256:cdad6dc37f60156468b2bd6b7af637b2a573bf2a5951bdfb33e46e862cc23487",
-      "hash": "sha256:80cd226415004122ff7f87afa18bd6220c123c9488717e194d0b754540ac6258"
+      "prev_hash": "sha256:1f4722b24e544d87841306dac88a5185dc38c1780eab523ca4da9084ba69e6f1",
+      "hash": "sha256:595dae59ea0a9d532bb5f826e8efc8ef97dea2a2c803ba5b6c97c17d85953a38"
     },
     {
       "seq": 10,
@@ -236,8 +236,8 @@
         },
         "payment_mandate_ref": "ap2:pm_example_123"
       },
-      "prev_hash": "sha256:80cd226415004122ff7f87afa18bd6220c123c9488717e194d0b754540ac6258",
-      "hash": "sha256:16139f6db2843a71100d1ce1dec81cd86c80d1f84c8b10f4d9473a4fa46eb0e7"
+      "prev_hash": "sha256:595dae59ea0a9d532bb5f826e8efc8ef97dea2a2c803ba5b6c97c17d85953a38",
+      "hash": "sha256:a23dedf91517965444271c69d1da72d94bb593fb168e67394b29bbe6263d5243"
     },
     {
       "seq": 11,
@@ -249,8 +249,8 @@
         "detail": "14 day cooling-off period applies.",
         "deadline": "2026-10-16T23:59:59Z"
       },
-      "prev_hash": "sha256:16139f6db2843a71100d1ce1dec81cd86c80d1f84c8b10f4d9473a4fa46eb0e7",
-      "hash": "sha256:29f2fe0d20bb3d1271e76974255be3925aacef8973012edfe3cec524aa440a44"
+      "prev_hash": "sha256:a23dedf91517965444271c69d1da72d94bb593fb168e67394b29bbe6263d5243",
+      "hash": "sha256:d166f9eeb55b49ee5cba1004acfa08df9969ca68986b27bc738a93b82e488161"
     }
   ],
   "outcome_evidence": {
@@ -284,20 +284,20 @@
     }
   },
   "seal": {
-    "final_event_hash": "sha256:29f2fe0d20bb3d1271e76974255be3925aacef8973012edfe3cec524aa440a44",
+    "final_event_hash": "sha256:d166f9eeb55b49ee5cba1004acfa08df9969ca68986b27bc738a93b82e488161",
     "sealed_at": "2026-10-02T08:14:30Z",
     "signatures": [
       {
         "signer": "agent",
-        "alg": "ES256",
-        "key_id": "agt_homehelper_01#k1",
-        "value": "UNSIGNED-EXAMPLE"
+        "alg": "EdDSA",
+        "key_id": "https://agent.example/.well-known/jwks.json#home-helper",
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vYWdlbnQuZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jaG9tZS1oZWxwZXIiLCJ0eXAiOiJhLXdpdG5lc3Mtc2VhbCJ9..j6BgFB0T37sI8Z0tAaZQs6DIL8fbx1QXGvAhEYHYJSGIYhy4-rdYAIjekpUrZWnMec-Qk0OOAc282B8VBaQ_CA"
       },
       {
         "signer": "provider",
-        "alg": "ES256",
-        "key_id": "prov_newco#k1",
-        "value": "UNSIGNED-EXAMPLE"
+        "alg": "EdDSA",
+        "key_id": "https://newco.example/.well-known/jwks.json#seal-2026",
+        "value": "eyJhbGciOiJFZERTQSIsImtpZCI6Imh0dHBzOi8vbmV3Y28uZXhhbXBsZS8ud2VsbC1rbm93bi9qd2tzLmpzb24jc2VhbC0yMDI2IiwidHlwIjoiYS13aXRuZXNzLXNlYWwifQ..cH0DDzAE19i3xyUgiBWLKXeIk6LIqoeK4gNQt65MD_M4_vnKGDyk0lIKh2ANo3TtC3WxV-e5wSmSIOfrS50tDA"
       }
     ]
   }
