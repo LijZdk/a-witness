@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/LijZdk/a-witness/witness/canon"
+	"github.com/LijZdk/a-witness/witness/internal/rules"
 	"github.com/LijZdk/a-witness/witness/sign"
 )
 
@@ -43,13 +44,13 @@ func (skipSignatures) PublicKey(context.Context, string) (crypto.PublicKey, erro
 //
 // Not checked here yet:
 //   - JSON Schema conformance: scripts/validate.py, until witness/schema exists
-//   - mandate rules 9 to 14: Phase 3 (scripts/validate.py checks rule 9)
+//   - mandate rules 9 to 14: Check runs them, on a record Verify finds intact
 //
 // An error means a document could not be read at all: it is not strict
 // JSON (see canon.Parse), or lacks a field these checks need.
 func Verify(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolver) ([]Problem, error) {
 	if keys == nil {
-		return nil, errors.New("witness: no key resolver; pass witness.SkipSignatures to check without signatures")
+		return nil, errNoResolver
 	}
 	mandate, err := parseObject(mandateJSON, "mandate")
 	if err != nil {
@@ -59,6 +60,14 @@ func Verify(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolv
 	if err != nil {
 		return nil, err
 	}
+	return verify(ctx, mandate, traceDoc, keys)
+}
+
+var errNoResolver = errors.New("witness: no key resolver; pass witness.SkipSignatures to check without signatures")
+
+// verify is Verify on parsed documents, so that Check can run the mandate
+// rules on exactly the maps that were verified.
+func verify(ctx context.Context, mandate, traceDoc map[string]any, keys sign.Resolver) ([]Problem, error) {
 	mandateID, err := field[string](mandate, "mandate_id", "mandate")
 	if err != nil {
 		return nil, err
@@ -107,7 +116,7 @@ func Verify(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolv
 	// Rule 5: time only moves forward.
 	var last time.Time
 	for i, ev := range t.events {
-		at, err := time.Parse(time.RFC3339, ev.at)
+		at, err := rules.ParseTime(ev.at)
 		if err != nil {
 			add(5, i, "event %d: unreadable timestamp %q", i, ev.at)
 			continue
@@ -117,7 +126,7 @@ func Verify(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolv
 		}
 		last = at
 	}
-	if sealedAt, err := time.Parse(time.RFC3339, t.sealedAt); err != nil {
+	if sealedAt, err := rules.ParseTime(t.sealedAt); err != nil {
 		add(5, -1, "seal: unreadable timestamp %q", t.sealedAt)
 	} else if sealedAt.Before(last) {
 		add(5, -1, "seal is dated before the final event")

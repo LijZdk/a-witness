@@ -363,25 +363,25 @@ Something went wrong. Recording errors honestly is part of the record: in the `h
 
 ## Rules across documents
 
-These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted. The Go reference implementation, `witness.Verify`, enforces rules 1 to 8 and 15.
+These are the rules no single schema can express. The last column says whether the v0.1 verifier, `scripts/validate.py`, enforces each one. The rest are enforced by the Phase 3 verifier unless noted. The Go reference implementation checks rules 1 to 8 and 15 in `witness.Verify`, and adds the mandate rules in `witness.Check`; the last column says what `Check` covers.
 
-| # | Rule | Checked in v0.1 |
-|---|---|---|
-| 1 | `mandate_ref.mandate_id` and `mandate_ref.mandate_hash` match the mandate. | Yes |
-| 2 | Event `seq` numbers run 0, 1, 2… with no gaps. | Yes |
-| 3 | Each event's `prev_hash` is the previous event's `hash`; event 0's is the mandate hash. | Yes |
-| 4 | Each event's `hash` matches its content. | Yes |
-| 5 | Event times never go backwards, and `seal.sealed_at` is not before the last event. | Yes |
-| 6 | `seal.final_event_hash` is the last event's `hash`. | Yes |
-| 7 | Every `seq` cited in `outcome_evidence` exists. | Yes |
-| 8 | Every `quote_received` has its own `quote_id`, unique within the trace. Every `quote_id` or `related_quote_id` in another event (including each option in `alternatives_considered`) refers to a `quote_received` earlier in the same trace. | Yes |
-| 9 | **Human confirmation.** When `human_confirmation` is `always`, every `action_executed` needs its own approval: a `human_confirmation` event with actor `principal` and decision `approved`, after the most recent `selection_made` and after any earlier `action_executed`. A new selection cancels an earlier approval, because a yes to one choice is not a yes to another. | Yes, for `always` only |
-| 10 | `journey.product_class` and `journey.action` are within the mandate's `scope`. | No |
-| 11 | Every event falls inside the mandate's `validity` window, and the mandate was not revoked. | No |
-| 12 | No binding action exceeds `max_commitment`, `max_term_months` or `max_transactions`; no renewal rise exceeds `max_price_increase_pct`; no savings rate falls below `min_aer`. | No |
-| 13 | No chosen quote failed a requirement check. | No |
-| 14 | `human_confirmation: "never"` is flagged. `above_limits` is enforced. | No |
-| 15 | **Signatures.** The principal's signature on the mandate is valid. Every seal signature is valid. At least one valid seal signature is from the `agent`, and if the mandate names `agent.public_key_ref`, that signature uses exactly that key. Keys must be known to the verifier. | Yes, with `--keys` |
+| # | Rule | Checked in v0.1 (`validate.py`) | Checked by Go `witness.Check` |
+|---|---|---|---|
+| 1 | `mandate_ref.mandate_id` and `mandate_ref.mandate_hash` match the mandate. | Yes | Yes |
+| 2 | Event `seq` numbers run 0, 1, 2… with no gaps. | Yes | Yes |
+| 3 | Each event's `prev_hash` is the previous event's `hash`; event 0's is the mandate hash. | Yes | Yes |
+| 4 | Each event's `hash` matches its content. | Yes | Yes |
+| 5 | Event times never go backwards, and `seal.sealed_at` is not before the last event. | Yes | Yes |
+| 6 | `seal.final_event_hash` is the last event's `hash`. | Yes | Yes |
+| 7 | Every `seq` cited in `outcome_evidence` exists. | Yes | Yes |
+| 8 | Every `quote_received` has its own `quote_id`, unique within the trace. Every `quote_id` or `related_quote_id` in another event (including each option in `alternatives_considered`) refers to a `quote_received` earlier in the same trace. | Yes | Yes |
+| 9 | **Human confirmation.** When `human_confirmation` is `always`, every `action_executed` needs its own approval: a `human_confirmation` event with actor `principal` and decision `approved`, after the most recent `selection_made`, and the action's `quote_id` must be the selected quote. An approval is used up by one action. A new `selection_made` cancels an earlier approval, because a yes to one choice is not a yes to another, and so does a later `human_confirmation` that is `declined` or `modified`. For `above_limits`, an approval is needed only when the action goes beyond a limit in `limits` (this needs rule 12). | Yes, for `always` only | Yes, for `always`; `above_limits` is reported as not checked |
+| 10 | `journey.product_class` is in `scope.product_classes` and `journey.action` is in `scope.allowed_actions`. Further, if `scope.allowed_actions` contains no binding action (`purchase`, `renew`, `switch`, `cancel`, `amend`), no `action_executed` event may appear. `provider_allowlist` and `provider_blocklist` are not covered by any rule yet. | No | Yes, with the extension in the rule; provider lists are not covered |
+| 11 | Every event falls inside the mandate's `validity` window (`not_before` and `expires_at`, both inclusive, compared as instants), and the mandate was not revoked. Only the events' `at` times count, not the seal's, consent's or journey's. | No | The window, yes; revocation is reported as not checked |
+| 12 | No binding action exceeds `max_commitment`, `max_term_months` or `max_transactions`; no renewal rise exceeds `max_price_increase_pct`; no savings rate falls below `min_aer`. | No | No, reported as not checked |
+| 13 | No chosen quote failed a requirement check. | No | No, reported as not checked |
+| 14 | `human_confirmation: "never"` is flagged: a warning, not a failure. `above_limits` is enforced (see rule 9). | No | `never` is flagged as a warning; `above_limits` is reported under rule 9 |
+| 15 | **Signatures.** The principal's signature on the mandate is valid. Every seal signature is valid. At least one valid seal signature is from the `agent`, and if the mandate names `agent.public_key_ref`, that signature uses exactly that key. Keys must be known to the verifier. | Yes, with `--keys` | Yes, when keys are given |
 
 ---
 
@@ -467,6 +467,8 @@ A verifier answers two separate questions, and reports which one failed:
 
 1. **Is this record genuine?** Schemas, chain, timestamps, references, seal and signatures: rules 1–8 and 15.
 2. **Did the agent do what it was allowed to?** The mandate rules: 9–14.
+
+In Go, `witness.Check` answers both, in this order, and its report keeps them apart: integrity problems, rule findings, warnings, and what was not checked. It runs the mandate rules only if the record is intact (question 1 answered yes). `Pass` is true only if the signatures were checked and valid and the rules ran and found nothing. A warning, such as rule 14's, does not change a pass. A `human_confirmation` event is the agent's record of the principal's yes: unless the principal signed the seal, that yes is the agent's claim, and the report says so.
 
 The second question only makes sense once the first is answered yes, because rules checked against a tampered record prove nothing. `scripts/validate.py` reports one of four results:
 
