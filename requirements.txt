@@ -9,6 +9,3 @@ rfc8785>=0.1.4,<0.2
 # Signatures: Ed25519 and ES256. 43 is the first version with deterministic
 # ECDSA (RFC 6979), which keeps the generated signature vectors reproducible.
 cryptography>=43
-
-# TEMPORARY (AW-2 proof): a version with published vulnerabilities. Reverted in the next commit.
-urllib3==1.26.4
