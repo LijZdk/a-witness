@@ -97,7 +97,7 @@ The minimum Go version is the one in `go.mod` (currently 1.26). The project supp
 With [just](https://github.com/casey/just) installed:
 
 - `just check-fast`: gofmt, `go vet` and the Go unit tests. A few seconds; run it after every change.
-- `just check-full`: `check-fast`, then everything else CI runs: `go mod verify`, the race detector, the tests on the oldest Go that `go.mod` supports, staticcheck, and `scripts/check.sh` (examples, test vectors, the Python and JavaScript cross-checks, and the inputs that must fail). It needs `pip install -r requirements.txt` and Node; set `PYTHON` to choose the interpreter.
+- `just check-full`: `check-fast`, then everything else CI runs: `go mod verify`, the race detector, the tests on the oldest Go that `go.mod` supports, staticcheck, `govulncheck` (on the oldest Go that `go.mod` supports and on the current Go), `pip-audit` on `requirements.txt`, and `scripts/check.sh` (examples, test vectors, the Python and JavaScript cross-checks, and the inputs that must fail). It needs `pip install -r requirements.txt`, `pip install pip-audit` and Node; set `PYTHON` to choose the interpreter.
 
 ## Repository layout
 
