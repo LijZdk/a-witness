@@ -123,6 +123,7 @@ def approval_without_selection(e):
 variant("approval-without-selection", approval_without_selection,
         lambda t: [r.update(event_seqs=sorted({min(x, len(t["events"]) - 1) for x in r["event_seqs"]}))
                    for r in t["outcome_evidence"].values()])  # keep the evidence citing events that exist
+variant("agent-approval", lambda e: e[9].update(actor="agent"))  # the agent writes the yes itself
 variant("different-quote", lambda e: e[10]["payload"].update(quote_id="q_cheapco"))  # approved q_newco
 variant("status-changed", lambda e: None, lambda t: t["journey"].update(status="failed"))
 EOF
@@ -141,6 +142,10 @@ expect_fail "a yes with no choice made at all is not an approval of the purchase
   "event 9 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/approval-without-selection.json"
 expect_fail "a yes given before the choice is still a mandate breach, not a broken record" \
   "the record is intact, but the agent broke its mandate" "$M" "$TMP/approval-before-selection.json"
+expect_fail "a yes recorded by the agent is not the principal's yes" \
+  "event 10 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal" "$M" "$TMP/agent-approval.json"
+expect_fail "a yes recorded by the agent is a mandate breach, not a broken record" \
+  "the record is intact, but the agent broke its mandate" "$M" "$TMP/agent-approval.json"
 expect_fail "a purchase on a different quote than the one approved is flagged as a mandate breach" \
   "the record is intact, but the agent broke its mandate" "$M" "$TMP/different-quote.json"
 expect_fail "the quote approved is named in the finding" \

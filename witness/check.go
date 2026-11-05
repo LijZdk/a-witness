@@ -73,7 +73,11 @@ func (r Report) Pass() bool {
 //
 // A "yes" in the trace is the agent's claim about the principal. Unless the
 // seal carries a valid signature labelled "principal" made with the key that
-// signed the mandate, the report says so in NotChecked.
+// signed the mandate, a key that is neither the mandate's agent.public_key_ref
+// nor the key of any other signer of the seal, the report says so in
+// NotChecked. Even then, Check cannot tell which key belongs to which party
+// unless the caller's resolver binds keys to roles; a trusted key used under
+// another role is not detected.
 //
 // An error means a document could not be read, or lacks, or has a wrong type
 // or value for, something the checks need. It is never a silent skip.
@@ -132,23 +136,44 @@ func problemsFrom(fs []rules.Finding) []Problem {
 	return out
 }
 
-// principalSealed reports whether the principal signed the seal: it carries a
-// signature with signer "principal" made with the key that signed the mandate
-// as principal (the mandate signature's key_id). A "principal" label alone
-// proves nothing, since rule 15 only checks that a signature verifies under
-// some trusted key. It is used only on records whose signatures all verified.
+// principalSealed reports whether the principal can be taken to have
+// co-signed the seal. It does when (a) the seal carries a signature with signer
+// "principal" made with the key that signed the mandate (the mandate
+// signature's key_id), and (b) that key is not the agent's, that is neither the
+// mandate's agent.public_key_ref nor the key of any seal signature whose signer
+// is not "principal". A "principal" label alone proves nothing, since rule 15
+// only checks that a signature verifies under some trusted key, and the
+// mandate signature is outside the mandate hash, so an agent can re-sign the
+// mandate with its own key. Condition (b) rules out the agent, and a provider
+// that signed the seal, borrowing their key for the role. It cannot do more:
+// without a resolver that binds keys to roles, the verifier cannot tell which
+// key belongs to which party. It is used only on records whose signatures
+// all verified.
 func principalSealed(mandate, traceDoc map[string]any) bool {
 	msig, _ := mandate["signature"].(map[string]any)
-	mandateKey, ok := msig["key_id"].(string)
-	if !ok || mandateKey == "" {
+	principalKey, ok := msig["key_id"].(string)
+	if !ok || principalKey == "" {
+		return false
+	}
+	if agent, ok := mandate["agent"].(map[string]any); ok && agent["public_key_ref"] == principalKey {
 		return false
 	}
 	seal, _ := traceDoc["seal"].(map[string]any)
 	sigs, _ := seal["signatures"].([]any)
+	signed := false
 	for _, s := range sigs {
-		if sig, ok := s.(map[string]any); ok && sig["signer"] == "principal" && sig["key_id"] == mandateKey {
-			return true
+		sig, ok := s.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch {
+		case sig["signer"] != "principal":
+			if sig["key_id"] == principalKey {
+				return false
+			}
+		case sig["key_id"] == principalKey:
+			signed = true
 		}
 	}
-	return false
+	return signed
 }

@@ -44,7 +44,7 @@ func (skipSignatures) PublicKey(context.Context, string) (crypto.PublicKey, erro
 //
 // Not checked here yet:
 //   - JSON Schema conformance: scripts/validate.py, until witness/schema exists
-//   - mandate rules 9 to 14: Check runs them, on a record Verify finds intact
+//   - mandate rules: Check runs rules 9, 10, 11 and 14 (12 and 13 are reported as not checked), on a record Verify finds intact
 //
 // An error means a document could not be read at all: it is not strict
 // JSON (see canon.Parse), or lacks a field these checks need.
