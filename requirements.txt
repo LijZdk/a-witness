@@ -1,7 +1,7 @@
 # format-nongpl turns on checking of "date-time" and "uri" formats. Without it
 # jsonschema silently accepts any string there. The plain "format" extra pulls
 # in a GPL dependency, so it is avoided.
-jsonschema[format-nongpl]>=4.18,<5
+jsonschema[format-nongpl]>=4.26.0,<5
 
 # RFC 8785 canonical JSON, used for every hash (Apache-2.0, Trail of Bits).
 rfc8785>=0.1.4,<0.2
