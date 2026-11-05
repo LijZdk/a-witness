@@ -1,6 +1,6 @@
 # Mapping a-witness to MCP
 
-Status: draft, written 2026-11-05 against MCP specification version 2026-07-28. Back to [README](../../README.md) and [SPEC](../../SPEC.md). Related: [AP2](ap2.md), [UCP](ucp.md).
+Status: draft, written 2026-11-05 against MCP specification version 2026-07-28. Not affiliated with or endorsed by the MCP maintainers. Back to [README](../../README.md) and [SPEC](../../SPEC.md). Related: [AP2](ap2.md), [UCP](ucp.md).
 
 ## What MCP is
 
@@ -10,7 +10,7 @@ The Model Context Protocol (MCP) is an open protocol that connects AI applicatio
 
 MCP moves the calls. a-witness records them. The Phase 4 middleware in [ROADMAP.md](../../ROADMAP.md) wraps an MCP server's tools and writes trace events when they are called. It sits beside the call, not in the decision path. It does not change tool inputs or outputs, and MCP needs no change.
 
-MCP has no mandate, no signature over messages and no audit trail. The tools page tells clients to "log tool usage for audit purposes" and to prompt for confirmation on sensitive operations, and says there should be a human in the loop with the ability to deny invocations, but it defines no format for either ([MCP tools, Security Considerations and User Interaction Model](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)). That is the gap a-witness fills.
+In the MCP pages listed under Sources I found no mandate, message signature or audit-trail format. The tools page tells clients to "log tool usage for audit purposes" and to prompt for confirmation on sensitive operations, and says there should be a human in the loop with the ability to deny invocations, but it defines no format for either ([MCP tools, Security Considerations and User Interaction Model](https://modelcontextprotocol.io/specification/2026-07-28/server/tools)). a-witness is a draft format for recording those steps. The entries are the recorder's own account, signed with the agent's key. They are not independent proof of what happened.
 
 ## The version matters
 
@@ -49,7 +49,7 @@ MCP does not say what a tool *means*. A tool called `get_quote` and one called `
 
 MCP's way to ask a person is *elicitation*. Under the 2026-07-28 pattern a server answers a tool call with `input_required` and an `elicitation/create` request, and the client retries with the person's answer in `inputResponses` ([MCP tools, Input Required Tool Results](https://modelcontextprotocol.io/specification/2026-07-28/server/tools); [MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)). The response has an `action` (the example shows `accept`) and optional `content`.
 
-A recorder could turn this into a `human_confirmation` event. But the answer travels through the *client*, and the client is the agent's host. Nothing in MCP shows that a human, and not the agent, supplied it. The spec asks clients to show a UI that makes clear which server is asking and to let the person decline ([MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)), but it is a requirement on the client, not evidence. SPEC.md rule 9 needs an event whose actor is the `principal`. The honest reading is that an MCP elicitation answer is evidence only if the client that relayed it is trusted, or if the answer carries its own proof (for example a passkey assertion in `content`, which MCP leaves to the application). Form-mode elicitation must not be used to collect payment credentials; URL mode is for those ([MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)).
+A recorder could turn this into a `human_confirmation` event. But the answer travels through the *client*, and the client is the agent's host. Nothing in MCP shows that a human, and not the agent, supplied it. The spec asks clients to show a UI that makes clear which server is asking and to let the person decline ([MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)), but it is a requirement on the client, not evidence. SPEC.md rule 9 needs an event whose actor is the `principal`. The honest reading is that an MCP elicitation answer is evidence only if the client that relayed it is trusted, or if the answer carries its own proof (for example a passkey assertion in `content`, which MCP leaves to the application). Such a proof would have to be bound to this specific action, and even then it proves only that the key holder approved. Form-mode elicitation must not be used to collect payment credentials; URL mode is for those ([MCP elicitation](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)).
 
 ### Tying calls to one trace
 

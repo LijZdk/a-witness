@@ -1,6 +1,6 @@
 # Mapping a-witness to UCP
 
-Status: draft, written 2026-11-05 against UCP release 2026-08-25. Not endorsed by the UCP maintainers. Back to [README](../../README.md) and [SPEC](../../SPEC.md). Related: [AP2](ap2.md), [MCP](mcp.md).
+Status: draft, written 2026-11-05 against UCP release 2026-08-25. Not affiliated with or endorsed by the UCP maintainers. Back to [README](../../README.md) and [SPEC](../../SPEC.md). Related: [AP2](ap2.md), [MCP](mcp.md).
 
 ## Which "UCP"
 
@@ -55,22 +55,24 @@ A typical UCP checkout journey, over any of its transports, would be recorded li
 | `create_checkout` call | `quote_requested` | `agent` |
 | Response with status `incomplete`, `ready_for_complete` | `quote_received` (when a price is given) | `provider` |
 | Response with status `requires_escalation` and `continue_url` | `escalation` with `handed_to: principal` | `agent` |
-| Principal approves outside UCP (own UI, or AP2 trusted surface) | `human_confirmation` | `principal` |
+| Principal approves outside UCP (own UI, or AP2 trusted surface) | `human_confirmation` | `principal` (see note) |
 | `complete_checkout` returns `completed` | `action_executed` | `provider` |
 | Order created, later adjustments | `post_sale_notice` as needed | `provider` |
+
+Note: the actor `principal` is the recorder's claim. It is evidence of the principal's approval only if the principal signs.
 
 What UCP cannot supply is who the actor was and what the principal saw. The recording component would take those from elsewhere (the agent's own logs, the confirmation screen).
 
 ## Mismatches and open questions
 
-1. **Domain fit.** UCP's published services are shopping, lodging and common, as far as I could see in the repository tree. I did not find anything for insurance, savings or other regulated financial products. Whether a policy renewal or a savings deposit is a "checkout" is open. a-witness's schema allows `transport: "ucp"`, but I have no evidence anyone runs financial products over UCP.
+1. **Domain fit.** At the release tag `v2026-08-25`, `source/services/` holds three services: `common`, `payment-actions` and `shopping`. A `lodging` service appears only on `main`, which is unreleased. I did not find anything for insurance, savings or other regulated financial products. Whether a policy renewal or a savings deposit is a "checkout" is open. a-witness's schema allows `transport: "ucp"`, but I have no evidence anyone runs financial products over UCP.
 2. **Quote content.** a-witness quotes carry `previous_price`, `aer`, `key_features` and `valid_until`. I found no matching fields in the UCP checkout. Would be extension fields, which are open to UCP's namespace rules (reverse-domain names, `schema` served from the matching domain: [overview](https://ucp.dev/2026-08-25/specification/overview/)).
-3. **Personal data.** UCP buyer data and billing addresses flow through checkout messages. a-witness must hash them (`request_hash`) and not copy them. The mapping needs a rule for which UCP fields are hashed and which are dropped.
+3. **Personal data.** UCP buyer data and billing addresses flow through checkout messages. Hashing a request (`request_hash`) keeps its contents out of the trace, but a hash is still a linkable identifier and may be personal data. Low-entropy buyer fields such as a name or phone number should be dropped, not hashed, because a hash of them can be guessed. The mapping needs a rule for which UCP fields are hashed and which are dropped.
 4. **Money format.** UCP amounts are in minor units ([overview](https://ucp.dev/2026-08-25/specification/overview/)). a-witness uses decimal strings.
 5. **No consent-to-purchase record in base UCP.** UCP's Buyer Consent extension is about data use. Evidence that a human approved a purchase exists only through the AP2 extension, or outside UCP.
 6. **Event order and time.** UCP responses do not give a standard event time that I saw. A recorder would use its own clock.
 7. **Session identity.** I did not establish how a recorder ties several UCP calls to one journey. The checkout `id` ties calls about one checkout. A journey that compares several businesses spans several checkouts. a-witness `quote_id` is unique within a trace, so a UCP checkout id from each business could serve, but this is a design choice.
-8. **Merchant of Record.** UCP states the business remains Merchant of Record ([Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/)). In a-witness the `provider` signs the seal "should". Whether a UCP business would sign an a-witness seal is not known, and nothing in UCP asks it to.
+8. **Merchant of Record.** UCP states the business remains Merchant of Record ([Checkout](https://ucp.dev/2026-08-25/specification/shopping/checkout/)). a-witness says the provider should also sign the seal. Whether a UCP business would sign an a-witness seal is not known, and nothing in UCP asks it to.
 9. **Moving target.** The UCP repository changed on 2026-10-31 (head commit `58c7ab9`), after the latest stable release `2026-08-25`, and the repository's site config builds a `draft` version. Everything here is against the release tag. The AP2 extension text on `main` differs slightly from the tag; the differences I saw were in examples only.
 10. **Not read.** Catalog, Cart, Order schemas, fulfillment, discount, terms and return-policy extensions, the embedded protocol and the A2A binding. Nothing here depends on them except where marked.
 
