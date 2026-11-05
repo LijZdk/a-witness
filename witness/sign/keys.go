@@ -108,12 +108,23 @@ func parseJWK(jwk map[string]any) (crypto.PublicKey, error) {
 
 // JWKSFetcher resolves key ids of the form "https://host/path#kid": it
 // fetches the JWKS at the URL and returns the key whose "kid" is the part
-// after "#". Only HTTPS is used. Each URL is fetched once and cached.
+// after "#". Only HTTPS is used. Each URL is fetched once and a successful
+// result is cached. Concurrent lookups of one URL share a single fetch, and a
+// slow URL never delays lookups of other URLs. A failed fetch is not cached,
+// so a later lookup tries again.
 type JWKSFetcher struct {
 	Client *http.Client // nil means a client with a 10 second timeout
 
-	mu    sync.Mutex
-	cache map[string]KeySet
+	mu      sync.Mutex // guards entries only; never held during network I/O
+	entries map[string]*jwksEntry
+}
+
+// jwksEntry is one URL's fetch, in flight or finished. set and err are
+// written before done is closed and read only after it.
+type jwksEntry struct {
+	done chan struct{}
+	set  KeySet
+	err  error
 }
 
 // maxJWKSBytes caps how much a fetch will read, so a hostile URL cannot
@@ -139,10 +150,38 @@ func (f *JWKSFetcher) PublicKey(ctx context.Context, keyID string) (crypto.Publi
 
 func (f *JWKSFetcher) fetch(ctx context.Context, address string) (KeySet, error) {
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if set, ok := f.cache[address]; ok {
-		return set, nil
+	e, ok := f.entries[address]
+	if !ok {
+		e = &jwksEntry{done: make(chan struct{})}
+		if f.entries == nil {
+			f.entries = map[string]*jwksEntry{}
+		}
+		f.entries[address] = e
 	}
+	f.mu.Unlock()
+
+	if ok {
+		select {
+		case <-e.done:
+			return e.set, e.err
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
+	}
+
+	// This caller owns the fetch. The lock is not held here.
+	e.set, e.err = f.get(ctx, address)
+	if e.err != nil {
+		f.mu.Lock()
+		delete(f.entries, address)
+		f.mu.Unlock()
+	}
+	close(e.done)
+	return e.set, e.err
+}
+
+// get does the network fetch for one URL.
+func (f *JWKSFetcher) get(ctx context.Context, address string) (KeySet, error) {
 	client := f.Client
 	if client == nil {
 		client = &http.Client{Timeout: 10 * time.Second}
@@ -166,15 +205,7 @@ func (f *JWKSFetcher) fetch(ctx context.Context, address string) (KeySet, error)
 	if len(body) > maxJWKSBytes {
 		return nil, fmt.Errorf("sign: %s is larger than %d bytes", address, maxJWKSBytes)
 	}
-	set, err := ParseJWKS(body)
-	if err != nil {
-		return nil, err
-	}
-	if f.cache == nil {
-		f.cache = map[string]KeySet{}
-	}
-	f.cache[address] = set
-	return set, nil
+	return ParseJWKS(body)
 }
 
 // PublicJWK returns the JWK (RFC 7517) for a public key, with the given kid.
