@@ -23,7 +23,8 @@ Never hand-edit the files in examples/. Change this script and run it again.
 
 Every example is signed for real (EdDSA), with throwaway keys derived from
 public strings: see jws.example_key. Their public keys are written to
-examples/keys.jwks.json. Anyone can derive the private keys too, so these
+examples/keys.principal.jwks.json, keys.agent.jwks.json and
+keys.provider.jwks.json, one file per role. Anyone can derive the private keys too, so these
 signatures show the mechanism working, not who signed.
 """
 import json
@@ -43,6 +44,13 @@ KEY_IDS = {
     "save-wise": "https://agent.example/.well-known/jwks.json#save-wise",
     "newco": "https://newco.example/.well-known/jwks.json#seal-2026",
     "steadybank": "https://steadybank.example/.well-known/jwks.json#seal-2026",
+}
+
+# The role each example key is trusted for. Each role has its own key file.
+KEY_ROLES = {
+    "principal": ["sam", "jo"],
+    "agent": ["home-helper", "save-wise"],
+    "provider": ["newco", "steadybank"],
 }
 
 
@@ -436,10 +444,14 @@ def savings_example():
 
 
 def write_keys():
-    """The public half of every example key, by full key id, for verifiers."""
-    keys = [public_jwk(example_key(holder).public_key(), key_id) for holder, key_id in KEY_IDS.items()]
-    (OUT / "keys.jwks.json").write_text(json.dumps({"keys": keys}, indent=2) + "\n")
-    print(f"wrote keys.jwks.json; {len(keys)} public keys")
+    """The public half of every example key, by full key id, in one file per role.
+
+    A verifier trusts a key for one role only (SPEC.md, "Keys"), so the roles
+    are separate files, never one combined set."""
+    for role, holders in KEY_ROLES.items():
+        keys = [public_jwk(example_key(holder).public_key(), KEY_IDS[holder]) for holder in holders]
+        (OUT / f"keys.{role}.jwks.json").write_text(json.dumps({"keys": keys}, indent=2) + "\n")
+        print(f"wrote keys.{role}.jwks.json; {len(keys)} public keys")
 
 
 if __name__ == "__main__":
