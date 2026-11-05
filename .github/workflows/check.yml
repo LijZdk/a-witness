@@ -12,12 +12,12 @@ jobs:
   scripts:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
           cache: pip
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
       - run: pip install -r requirements.txt
@@ -29,10 +29,12 @@ jobs:
   go:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+          # No dependencies means no go.sum, so the cache step warned "Restore cache failed: Dependencies file is not found ... go.sum"; turn caching back on once go.sum exists.
+          cache: false
       - name: gofmt
         run: test -z "$(gofmt -l .)" || { gofmt -l .; exit 1; }
       - run: go vet ./...
@@ -42,8 +44,10 @@ jobs:
   staticcheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
+          # No dependencies means no go.sum, so the cache step warned "Restore cache failed: Dependencies file is not found ... go.sum"; turn caching back on once go.sum exists.
+          cache: false
       - run: go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
