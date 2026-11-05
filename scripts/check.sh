@@ -64,6 +64,32 @@ for v in vectors:
 sys.exit(f"not ok  {len(wrong)} of {len(vectors)} signature vectors differ" if wrong else print(f"ok      all {len(vectors)} signature vectors match"))
 EOF
 
+echo "== hostile JWS headers are refused promptly and cleanly"
+"$PY" - <<'EOF'
+import sys, time
+sys.path.insert(0, "scripts")
+import jws
+key = jws.example_key("vector ed25519").public_key()
+
+def refuse(label, header, bound):
+    token = f"{jws.b64(header)}..{jws.b64(bytes(64))}"
+    start = time.monotonic()
+    try:
+        jws.verify(token, b"{}", key, "EdDSA", "k", "t")
+    except ValueError as e:
+        took = time.monotonic() - start
+        if took > bound:
+            sys.exit(f"not ok  {label}: refused, but took {took:.1f}s (limit {bound}s)")
+        print(f"ok      {label} ({took:.2f}s): {str(e)[:60]}")
+    except BaseException as e:
+        sys.exit(f"not ok  {label}: raised {type(e).__name__}, not ValueError")
+    else:
+        sys.exit(f"not ok  {label}: was accepted")
+
+refuse("50,000 distinct members", b"{" + b",".join(b'"m%d":1' % i for i in range(50000)) + b"}", 2)
+refuse("3,000,000-deep nesting", b"[" * 3000000, 10)
+EOF
+
 echo "== the passing examples pass"
 "$PY" scripts/validate.py "$M" "$T" "${KEYS[@]}"
 "$PY" scripts/validate.py examples/fixed-rate-savings-switch.mandate.json examples/fixed-rate-savings-switch.trace.json "${KEYS[@]}"

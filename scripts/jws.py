@@ -71,10 +71,11 @@ def sign(key, alg: str, kid: str, typ: str, payload: bytes, header: dict | None 
 
 
 def _no_duplicates(pairs):
-    names = [name for name, _ in pairs]
-    for name in names:
-        if names.count(name) > 1:
+    seen = set()
+    for name, _ in pairs:
+        if name in seen:
             raise ValueError(f"the JWS header has a duplicate member {name!r}")
+        seen.add(name)
     return dict(pairs)
 
 
@@ -87,6 +88,12 @@ def parse_header(raw: bytes) -> dict:
         raise ValueError("the JWS header is not valid UTF-8") from None
     except json.JSONDecodeError as e:
         raise ValueError(f"the JWS header is not valid JSON: {e}") from None
+    except ValueError:
+        raise
+    except RecursionError:
+        raise ValueError("the JWS header is too deeply nested") from None
+    except Exception as e:
+        raise ValueError(f"the JWS header cannot be parsed: {type(e).__name__}") from None
 
 
 def sign_raw_header(key, header_bytes: bytes, payload: bytes) -> str:
