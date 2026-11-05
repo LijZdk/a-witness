@@ -1,6 +1,8 @@
 package rules
 
 import (
+	"encoding/json"
+	"os"
 	"slices"
 	"strings"
 	"testing"
@@ -408,4 +410,50 @@ func FuzzCheck(f *testing.F) {
 		)
 		_, _ = Check(newMandate(conf), tr, true) // must not panic
 	})
+}
+
+func TestUnknownEventTypeOrActorIsAnError(t *testing.T) {
+	// A purchase renamed so that rule 9 does not see it must not pass.
+	renamed := act("q1")
+	renamed["type"] = "action_executed_v2"
+	if res, err := Check(newMandate("always"), newTrace(sel("q1"), renamed), true); err == nil {
+		t.Fatalf("no error, findings %v", res.Findings)
+	}
+	odd := sel("q1")
+	odd["actor"] = "guardian"
+	if _, err := Check(newMandate("always"), newTrace(odd), true); err == nil {
+		t.Fatal("an unknown actor was accepted")
+	}
+}
+
+// The lists in rules.go are a copy of the trace schema's enums; this keeps them honest.
+func TestEventTypesAndActorsMatchTheSchema(t *testing.T) {
+	b, err := os.ReadFile("../../../schemas/trace.schema.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var schema struct {
+		Defs map[string]struct {
+			Properties map[string]struct {
+				Enum []string `json:"enum"`
+			} `json:"properties"`
+		} `json:"$defs"`
+	}
+	if err := json.Unmarshal(b, &schema); err != nil {
+		t.Fatal(err)
+	}
+	event, ok := schema.Defs["event"]
+	if !ok {
+		t.Fatal("the schema has no $defs.event")
+	}
+	for name, ours := range map[string][]string{"type": eventTypes, "actor": actors} {
+		theirs := event.Properties[name].Enum
+		if len(theirs) == 0 {
+			t.Fatalf("no enum for event.%s in the schema", name)
+		}
+		a, b := slices.Sorted(slices.Values(ours)), slices.Sorted(slices.Values(theirs))
+		if !slices.Equal(a, b) {
+			t.Errorf("event.%s: rules.go has %v, the schema has %v", name, a, b)
+		}
+	}
 }

@@ -184,7 +184,8 @@ def confirmation_problems(mandate, trace):
             approved_quote = None
         elif kind == "human_confirmation":
             if payload["decision"] == "approved":
-                if ev["actor"] == "principal" and selected is not None:
+                if ev["actor"] == "principal":
+                    # Before any selection_made, selected is None: the yes is for no choice, so no yes is pending.
                     approved_quote = selected
             else:
                 approved_quote = None

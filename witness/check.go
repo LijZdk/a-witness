@@ -66,8 +66,14 @@ func (r Report) Pass() bool {
 // (SignaturesValid) means valid under the keys the caller's resolver trusts:
 // Check does not decide whose keys to trust.
 //
+// Check does not yet validate the documents against the JSON Schemas, and the
+// report says so in NotChecked. It does refuse, with an error, an event whose
+// type or actor is not in the trace schema, because the rules look at events
+// by type and would otherwise pass over it.
+//
 // A "yes" in the trace is the agent's claim about the principal. Unless the
-// principal signed the seal, the report says so in NotChecked.
+// seal carries a valid signature labelled "principal" made with the key that
+// signed the mandate, the report says so in NotChecked.
 //
 // An error means a document could not be read, or lacks, or has a wrong type
 // or value for, something the checks need. It is never a silent skip.
@@ -89,6 +95,9 @@ func Check(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolve
 		return rep, err
 	}
 
+	// Until witness/schema is wired in, nothing here checks the documents
+	// against the JSON Schemas (scripts/validate.py does).
+	rep.NotChecked = append(rep.NotChecked, NotChecked{0, "JSON Schema conformance was not checked"})
 	signaturesChecked := keys != SkipSignatures
 	if !signaturesChecked {
 		rep.NotChecked = append(rep.NotChecked, NotChecked{15, "signatures were not checked"})
@@ -102,7 +111,7 @@ func Check(ctx context.Context, mandateJSON, traceJSON []byte, keys sign.Resolve
 		rep.Signatures = SignaturesValid
 	}
 
-	res, err := rules.Check(mandate, traceDoc, signaturesChecked && sealSignedBy(traceDoc, "principal"))
+	res, err := rules.Check(mandate, traceDoc, signaturesChecked && principalSealed(mandate, traceDoc))
 	if err != nil {
 		return rep, err
 	}
@@ -123,13 +132,21 @@ func problemsFrom(fs []rules.Finding) []Problem {
 	return out
 }
 
-// sealSignedBy reports whether the seal carries a signature from the role.
-// It is used only on records whose signatures all verified.
-func sealSignedBy(traceDoc map[string]any, role string) bool {
+// principalSealed reports whether the principal signed the seal: it carries a
+// signature with signer "principal" made with the key that signed the mandate
+// as principal (the mandate signature's key_id). A "principal" label alone
+// proves nothing, since rule 15 only checks that a signature verifies under
+// some trusted key. It is used only on records whose signatures all verified.
+func principalSealed(mandate, traceDoc map[string]any) bool {
+	msig, _ := mandate["signature"].(map[string]any)
+	mandateKey, ok := msig["key_id"].(string)
+	if !ok || mandateKey == "" {
+		return false
+	}
 	seal, _ := traceDoc["seal"].(map[string]any)
 	sigs, _ := seal["signatures"].([]any)
 	for _, s := range sigs {
-		if sig, ok := s.(map[string]any); ok && sig["signer"] == role {
+		if sig, ok := s.(map[string]any); ok && sig["signer"] == "principal" && sig["key_id"] == mandateKey {
 			return true
 		}
 	}

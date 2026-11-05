@@ -47,6 +47,19 @@ func ParseTime(s string) (time.Time, error) {
 	return time.Parse(time.RFC3339, s)
 }
 
+// The event types and actors of schemas/trace.schema.json. Rule 9 looks at
+// events by type, so an event of a type it does not know (a purchase renamed
+// "action_executed_v2", say) would slip past it; Check refuses such a record
+// instead. A test keeps these lists equal to the schema's enums.
+var (
+	eventTypes = []string{
+		"intent_captured", "quote_requested", "quote_received", "disclosure_presented",
+		"alternatives_considered", "requirement_check", "selection_made", "human_confirmation",
+		"action_executed", "post_sale_notice", "escalation", "error",
+	}
+	actors = []string{"agent", "provider", "principal", "system"}
+)
+
 var binding = []string{"purchase", "renew", "switch", "cancel", "amend"}
 
 // Check applies the mandate rules to a mandate and a trace.
@@ -131,8 +144,14 @@ func readEvents(trace map[string]any) ([]event, error) {
 		if ev.typ, err = get[string](obj, "type", where); err != nil {
 			return nil, err
 		}
+		if !slices.Contains(eventTypes, ev.typ) {
+			return nil, fmt.Errorf("witness: %s.type: %q is not an event type in the trace schema", where, ev.typ)
+		}
 		if ev.actor, err = get[string](obj, "actor", where); err != nil {
 			return nil, err
+		}
+		if !slices.Contains(actors, ev.actor) {
+			return nil, fmt.Errorf("witness: %s.actor: %q is not an actor in the trace schema", where, ev.actor)
 		}
 		at, err := get[string](obj, "at", where)
 		if err != nil {

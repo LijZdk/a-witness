@@ -180,8 +180,11 @@ func assertNoRules(t *testing.T, r Report) {
 }
 
 // buildSigned makes a signed record from nothing with the producer API.
-// The principal signs the seal only if principalSigns.
-func buildSigned(t *testing.T, confirmation string, principalSigns bool) (mandate, trace []byte, keys sign.KeySet) {
+// principalSeal says who adds a seal signature with signer "principal": nobody (""),
+// the principal's own mandate key ("mandate key"), or the agent's key posing as the
+// principal ("agent key").
+// Each tweak may change the events before they are chained and sealed.
+func buildSigned(t *testing.T, confirmation, principalSeal string, tweaks ...func(events *[]map[string]any)) (mandate, trace []byte, keys sign.KeySet) {
 	t.Helper()
 	_, principalKey, _ := ed25519.GenerateKey(rand.Reader)
 	_, agentKey, _ := ed25519.GenerateKey(rand.Reader)
@@ -213,13 +216,17 @@ func buildSigned(t *testing.T, confirmation string, principalSigns bool) (mandat
 		"mandate_ref":  map[string]any{"mandate_id": "mdt_builtByGoTest02", "mandate_hash": mHash},
 		"journey":      map[string]any{"action": "purchase", "product_class": "pet_insurance", "started_at": "2026-11-03T10:00:00Z"},
 	}
-	for i, ev := range []map[string]any{
+	events := []map[string]any{
 		{"at": "2026-11-03T10:00:00Z", "type": "intent_captured", "actor": "agent", "payload": map[string]any{"summary": "Buy pet cover."}},
 		{"at": "2026-11-03T10:00:04Z", "type": "quote_received", "actor": "provider", "payload": map[string]any{"quote_id": "q1", "provider_id": "p", "product_id": "pet", "term_months": 12}},
 		{"at": "2026-11-03T10:00:09Z", "type": "selection_made", "actor": "agent", "payload": map[string]any{"quote_id": "q1", "rationale": "Only quote."}},
 		{"at": "2026-11-03T10:00:30Z", "type": "human_confirmation", "actor": "principal", "payload": map[string]any{"method": "passkey", "decision": "approved"}},
 		{"at": "2026-11-03T10:00:40Z", "type": "action_executed", "actor": "provider", "payload": map[string]any{"quote_id": "q1", "provider_reference": "R1", "amount_committed": map[string]any{"amount": "12.00", "currency": "GBP"}}},
-	} {
+	}
+	for _, tweak := range tweaks {
+		tweak(&events)
+	}
+	for i, ev := range events {
 		if err := AppendEvent(tr, ev); err != nil {
 			t.Fatalf("event %d: %v", i, err)
 		}
@@ -228,8 +235,11 @@ func buildSigned(t *testing.T, confirmation string, principalSigns bool) (mandat
 		t.Fatal(err)
 	}
 	signers := []Signer{agent}
-	if principalSigns {
+	switch principalSeal {
+	case "mandate key":
 		signers = append(signers, principal)
+	case "agent key":
+		signers = append(signers, Signer{Role: "principal", Alg: agent.Alg, KeyID: agent.KeyID, Key: agentKey})
 	}
 	for _, s := range signers {
 		if err := SignSeal(tr, s); err != nil {
@@ -251,7 +261,7 @@ func TestCheckPrincipalSignatureAndWarnings(t *testing.T) {
 	ctx := context.Background()
 
 	t.Run("a seal the principal signed vouches for the yes", func(t *testing.T) {
-		m, tr, keys := buildSigned(t, "always", true)
+		m, tr, keys := buildSigned(t, "always", "mandate key")
 		r, err := Check(ctx, m, tr, keys)
 		if err != nil {
 			t.Fatal(err)
@@ -262,7 +272,7 @@ func TestCheckPrincipalSignatureAndWarnings(t *testing.T) {
 	})
 
 	t.Run("a seal the principal did not sign leaves the yes as the agent's claim", func(t *testing.T) {
-		m, tr, keys := buildSigned(t, "always", false)
+		m, tr, keys := buildSigned(t, "always", "")
 		r, err := Check(ctx, m, tr, keys)
 		if err != nil {
 			t.Fatal(err)
@@ -272,8 +282,60 @@ func TestCheckPrincipalSignatureAndWarnings(t *testing.T) {
 		}
 	})
 
+	t.Run("the agent's key posing as the principal does not vouch for the yes", func(t *testing.T) {
+		m, tr, keys := buildSigned(t, "always", "agent key")
+		r, err := Check(ctx, m, tr, keys)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(r.Integrity) != 0 || !r.RulesRan {
+			t.Fatalf("the record is genuine, so the rules should run: %+v", r)
+		}
+		if !hasNotChecked(r, 9, "did not sign the seal") {
+			t.Fatalf("a principal-labelled signature made with the agent's key hid the unsigned-yes note: %+v", r.NotChecked)
+		}
+	})
+
+	t.Run("a purchase renamed to an unknown event type is an error, not a pass", func(t *testing.T) {
+		// No approval, and the purchase is no longer called action_executed, so
+		// rule 9 would never see it. The record is otherwise genuine and signed.
+		m, tr, keys := buildSigned(t, "always", "mandate key", func(evs *[]map[string]any) {
+			list := *evs
+			list[4]["type"] = "action_executed_v2"
+			*evs = append(list[:3], list[4:]...)
+		})
+		r, err := Check(ctx, m, tr, keys)
+		if err == nil {
+			t.Fatalf("no error; Pass() = %v, report %+v", r.Pass(), r)
+		}
+		if r.Pass() {
+			t.Fatal("a partial report on error passes")
+		}
+	})
+
+	t.Run("an unknown actor is an error", func(t *testing.T) {
+		m, tr, keys := buildSigned(t, "always", "mandate key", func(evs *[]map[string]any) {
+			(*evs)[3]["actor"] = "guardian"
+		})
+		if r, err := Check(ctx, m, tr, keys); err == nil {
+			t.Fatalf("no error: %+v", r)
+		}
+	})
+
+	t.Run("every Report says the JSON Schemas were not checked", func(t *testing.T) {
+		m, tr, keys := buildSigned(t, "always", "mandate key")
+		r, err := Check(ctx, m, tr, keys)
+		if err != nil || !hasNotChecked(r, 0, "JSON Schema conformance was not checked") {
+			t.Fatalf("%v %+v", err, r)
+		}
+		r, err = Check(ctx, readFile(t, "examples", "home-insurance-switch.mandate.json"), edit(t, "home-insurance-switch", false, func(map[string]any, []any) {}), SkipSignatures)
+		if err != nil || !hasNotChecked(r, 0, "JSON Schema conformance was not checked") {
+			t.Fatalf("%v %+v", err, r)
+		}
+	})
+
 	t.Run(`"never" is a warning and does not fail`, func(t *testing.T) {
-		m, tr, keys := buildSigned(t, "never", true)
+		m, tr, keys := buildSigned(t, "never", "mandate key")
 		r, err := Check(ctx, m, tr, keys)
 		if err != nil {
 			t.Fatal(err)
@@ -284,9 +346,9 @@ func TestCheckPrincipalSignatureAndWarnings(t *testing.T) {
 	})
 
 	t.Run(`"sometimes" is an error`, func(t *testing.T) {
-		// The mandate is edited and not re-signed, so integrity would also object;
-		// but reading it comes first. Skip signatures to isolate the error.
-		m, tr, _ := buildSigned(t, "sometimes", true)
+		// The mandate is signed, but its human_confirmation is not a value the schema
+		// allows. Skip signatures so that only the unreadable value can object.
+		m, tr, _ := buildSigned(t, "sometimes", "mandate key")
 		if r, err := Check(ctx, m, tr, SkipSignatures); err == nil {
 			t.Fatalf("no error: %+v", r)
 		}
