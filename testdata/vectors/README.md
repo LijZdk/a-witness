@@ -4,7 +4,7 @@ Known inputs with known outputs, so that any implementation of a-witness, in any
 
 | File | What it tests | Expected outputs come from |
 |---|---|---|
-| [`canon.json`](canon.json) | RFC 8785 canonical JSON: key order, string escaping, number forms, and inputs that **must be rejected** (duplicate keys, unpaired surrogates, invalid UTF-8, numbers out of range, trailing data) | The `rfc8785` Python library |
+| [`canon.json`](canon.json) | RFC 8785 canonical JSON: key order, string escaping, number forms, and inputs that **must be rejected** (duplicate keys, unpaired surrogates, invalid UTF-8, numbers out of range, trailing data, nesting deeper than 1,000 levels) | The `rfc8785` Python library |
 | [`numbers.json`](numbers.json) | How RFC 8785 writes 1,594 IEEE 754 doubles: the RFC's own examples, the boundaries where notation switches, and seeded random values | JavaScript's `JSON.stringify`, which RFC 8785 defines number formatting by |
 | [`hashes.json`](hashes.json) | a-witness hashes of text, mandates (without `signature`) and events (without `hash`) | `scripts/chain.py` |
 | [`signatures.json`](signatures.json) | Detached JWS with EdDSA and ES256: valid signatures, and 10 that must be refused (changed payload, wrong `typ`, `kid` or `alg`, an extra header member, a different key, DER-encoded ES256, attached payload, padding) | `scripts/jws.py`, using the `cryptography` library |

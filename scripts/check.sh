@@ -113,4 +113,7 @@ expect_fail "a key missing from the key file is reported" \
 echo "not json" > "$TMP/garbage.json"
 expect_fail "unreadable file is reported" "not valid JSON" "$M" "$TMP/garbage.json"
 
+"$PY" -c 'import sys; open(sys.argv[1], "w").write("[" * 1001 + "]" * 1001)' "$TMP/too-deep.json"
+expect_fail "a document nested 1,001 levels deep is refused, not crashed on" "nested deeper than 1000 levels" "$M" "$TMP/too-deep.json"
+
 echo "all checks passed"

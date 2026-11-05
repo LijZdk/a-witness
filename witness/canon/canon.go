@@ -23,6 +23,15 @@ import (
 	"unicode/utf8"
 )
 
+// MaxDepth is the deepest nesting Parse accepts. Arrays and objects each count
+// one level; a top-level scalar is depth 0 and "[]" is depth 1. No real
+// document comes close, and unbounded depth can crash a parser: on Go 1.25
+// encoding/json imposes no limit of its own, and a few million "[" overflow
+// the goroutine stack, a fatal error that cannot be recovered.
+const MaxDepth = 1000
+
+var errTooDeep = fmt.Errorf("canon: nesting deeper than %d levels", MaxDepth)
+
 // Transform returns the canonical form of a JSON text.
 func Transform(in []byte) ([]byte, error) {
 	v, err := Parse(in)
@@ -35,7 +44,8 @@ func Transform(in []byte) ([]byte, error) {
 // Parse decodes a JSON text, rejecting anything RFC 8785 does not accept:
 // invalid UTF-8, unpaired surrogate escapes (such as "\ud800"), duplicate
 // object keys, numbers outside the range of an IEEE 754 double, and anything
-// other than exactly one top-level value.
+// other than exactly one top-level value. Nesting deeper than MaxDepth is
+// rejected as it is met, before the recursion can grow.
 //
 // The result is built from nil, bool, float64, string, []any and
 // map[string]any, the same types Serialize accepts.
@@ -48,7 +58,7 @@ func Parse(in []byte) (any, error) {
 	}
 	dec := json.NewDecoder(bytes.NewReader(in))
 	dec.UseNumber()
-	v, err := parseValue(dec)
+	v, err := parseValue(dec, 0)
 	if err != nil {
 		return nil, err
 	}
@@ -58,7 +68,8 @@ func Parse(in []byte) (any, error) {
 	return v, nil
 }
 
-func parseValue(dec *json.Decoder) (any, error) {
+// parseValue reads one value; depth is how many arrays and objects enclose it.
+func parseValue(dec *json.Decoder, depth int) (any, error) {
 	tok, err := dec.Token()
 	if err != nil {
 		return nil, fmt.Errorf("canon: %w", err)
@@ -66,10 +77,14 @@ func parseValue(dec *json.Decoder) (any, error) {
 	switch t := tok.(type) {
 	case json.Delim:
 		switch t {
-		case '{':
-			return parseObject(dec)
-		case '[':
-			return parseArray(dec)
+		case '{', '[':
+			if depth >= MaxDepth {
+				return nil, errTooDeep
+			}
+			if t == '{' {
+				return parseObject(dec, depth+1)
+			}
+			return parseArray(dec, depth+1)
 		}
 		return nil, fmt.Errorf("canon: unexpected %q", t)
 	case json.Number:
@@ -84,7 +99,7 @@ func parseValue(dec *json.Decoder) (any, error) {
 	return nil, fmt.Errorf("canon: unexpected token %v", tok)
 }
 
-func parseObject(dec *json.Decoder) (any, error) {
+func parseObject(dec *json.Decoder, depth int) (any, error) {
 	obj := map[string]any{}
 	for dec.More() {
 		tok, err := dec.Token()
@@ -98,7 +113,7 @@ func parseObject(dec *json.Decoder) (any, error) {
 		if _, dup := obj[key]; dup {
 			return nil, fmt.Errorf("canon: duplicate object key %q", key)
 		}
-		val, err := parseValue(dec)
+		val, err := parseValue(dec, depth)
 		if err != nil {
 			return nil, err
 		}
@@ -110,10 +125,10 @@ func parseObject(dec *json.Decoder) (any, error) {
 	return obj, nil
 }
 
-func parseArray(dec *json.Decoder) (any, error) {
+func parseArray(dec *json.Decoder, depth int) (any, error) {
 	arr := []any{}
 	for dec.More() {
-		val, err := parseValue(dec)
+		val, err := parseValue(dec, depth)
 		if err != nil {
 			return nil, err
 		}
