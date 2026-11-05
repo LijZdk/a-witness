@@ -239,6 +239,21 @@ func TestURIFormat(t *testing.T) {
 		{"http://a]b/", false},
 		{"http://[::1/x", false},
 		{"x:a?b://[c]/", false},
+		// The authority starts only after 'scheme://'; otherwise it is a path.
+		{"a:b://[::1]", false},
+		{"a:b@c://[::1]", false},
+		{"a:b://[v1.x]/", false},
+		{"a:b:c://[::1]/", false},
+		{"a:b;c://[::1]", false},
+		{"a:.://[::1]", false},
+		{"a:b://u@[::1]:80/", false},
+		{"a1:b2://[::1]", false},
+		{"http:x://[::1]", false},
+		{"http:http://[v1.x]", false},
+		{"a:b@http://[::1]", false},
+		{"a:b://x:y/", true},   // a path; Python accepts it
+		{"a:b://h:1:2", true},  // a path; Python accepts it
+		{"a:b://a@b@c/", true}, // a path; Python accepts it
 		// Authorities: url.Parse does not check their grammar. Python's verdict
 		// on each of these was checked with jsonschema's FormatChecker.
 		{"http://a@b@c/", false},
@@ -438,6 +453,19 @@ func TestTruncate(t *testing.T) {
 }
 
 // The library lists unexpected keys in map order; the message must not.
+func TestRevocationURLWithColonBeforeSlashesEndToEnd(t *testing.T) {
+	b := readExample(t, "home-insurance-switch", "mandate")
+	old := "https://wallet.example/mandates/mdt_7Hq2Lk9Xw3Pz/status"
+	bad := strings.Replace(string(b), old, "https:x://[::1]/status", 1)
+	if bad == string(b) {
+		t.Fatal("test premise")
+	}
+	vs, err := ValidateMandateJSON([]byte(bad))
+	if err != nil || len(vs) != 1 || vs[0].Path != "validity/revocation_url" {
+		t.Fatalf("got %v, %v", strs(vs), err)
+	}
+}
+
 func TestAdditionalPropertiesMessageIsStable(t *testing.T) {
 	var first string
 	for n := 0; n < 20; n++ {

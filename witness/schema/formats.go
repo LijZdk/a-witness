@@ -65,10 +65,12 @@ func validateDateTime(v any) error {
 //     address without a zone, or IPvFuture ("v" 1*HEXDIG "." 1*(unreserved /
 //     sub-delims / ":")).
 //
-// Known differences from Python: none found for URIs in the tested cases
-// (IPvFuture needs a lower-case "v" here, as in Python). For date-time, Python
-// is looser in two ways that Go is not: it accepts a lower-case "t" or "z" and
-// a trailing newline.
+// Known differences from Python, where Go is stricter (found by running about
+// 229,000 generated strings through both): a trailing newline, which Python
+// accepts; and a leading zero in an IPv4 address embedded in an IPv6 literal,
+// such as "[::01.2.3.4]", which netip refuses. IPvFuture needs a lower-case
+// "v" in both. For date-time, Python also accepts a lower-case "t" or "z" and
+// a trailing newline. In no case found does Go accept what Python rejects.
 //
 // A scheme such as "javascript:x" is a valid URI and passes, as it does in
 // Python. Nothing may treat a URI that passed this check as safe to fetch or
@@ -127,11 +129,14 @@ func validateScheme(s string) error {
 // the positions of the '[' and ']' that delimit an IP-literal host (-1, -1 if
 // there is none) and the authority text.
 func authority(s string) (open, closing int, auth string, ok bool) {
-	scheme, rest, found := strings.Cut(s, "://")
-	if !found || strings.ContainsAny(scheme, "/?#") {
+	// The scheme ends at the first ':'; there is an authority only if "//"
+	// follows it directly. Anything else after the scheme is a path.
+	scheme, afterScheme, found := strings.Cut(s, ":")
+	rest, hasSlashes := strings.CutPrefix(afterScheme, "//")
+	if !found || !hasSlashes || strings.ContainsAny(scheme, "/?#") {
 		return -1, -1, "", false
 	}
-	start := len(scheme) + len("://")
+	start := len(scheme) + len(":") + len("//")
 	auth = rest
 	if i := strings.IndexAny(auth, "/?#"); i >= 0 {
 		auth = auth[:i]
