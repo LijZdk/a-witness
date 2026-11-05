@@ -1,0 +1,16 @@
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://agent.example/.well-known/jwks.json#home-helper",
+      "x": "00GYM32J48s_T95Yv_p8PczhBGvyQ74b9d924RH36ks"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://agent.example/.well-known/jwks.json#save-wise",
+      "x": "Sc5KU1KDnCtZ2QbaPmCTrAUQEayN3vOXtJlmAC2HZAI"
+    }
+  ]
+}

@@ -26,7 +26,7 @@ func rule15(problems []Problem) []string {
 
 func TestSignatures(t *testing.T) {
 	ctx := context.Background()
-	keys := exampleKeys(t)
+	keys := exampleTrust(t)
 	home := "home-insurance-switch"
 	mandate := readFile(t, "examples", home+".mandate.json")
 
@@ -70,18 +70,34 @@ func TestSignatures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := rule15(problems); len(got) != 1 || !strings.Contains(got[0], "mandate signature does not verify") {
+		// Changed by AW-32: a bad mandate signature now also stops the seal
+		// signatures from being checked, and says so (M4).
+		if got := rule15(problems); len(got) != 2 || !strings.Contains(got[0], "mandate signature does not verify") || !strings.HasPrefix(got[1], "seal signatures were not checked") {
 			t.Fatalf("got %v", problems)
 		}
 	})
 
 	t.Run("unknown keys are reported, not trusted", func(t *testing.T) {
-		problems, err := Verify(ctx, mandate, readFile(t, "examples", home+".trace.json"), sign.KeySet{})
+		empty := &Trust{Principal: sign.KeySet{}, Provider: sign.KeySet{}, Agent: sign.KeySet{}}
+		problems, err := Verify(ctx, mandate, readFile(t, "examples", home+".trace.json"), empty)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := rule15(problems); len(got) != 4 || !strings.Contains(got[0], "could not be found") {
+		// Changed by AW-32: the unknown principal key is one problem, then M4.
+		if got := rule15(problems); len(got) != 2 || !strings.Contains(got[0], "is not trusted for the principal") {
 			t.Fatalf("got %v", got)
+		}
+		// With the principal known, the unknown agent and provider keys are reported too.
+		partial := &Trust{Principal: keys.Principal, Provider: sign.KeySet{}, Agent: sign.KeySet{}}
+		problems, err = Verify(ctx, mandate, readFile(t, "examples", home+".trace.json"), partial)
+		if err != nil {
+			t.Fatal(err)
+		}
+		got := strings.Join(rule15(problems), "\n")
+		for _, want := range []string{"could not be found", "is not trusted for the provider", "no valid signature from a provider"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("missing %q in:\n%s", want, got)
+			}
 		}
 	})
 
@@ -118,7 +134,11 @@ func TestBuildAndVerify(t *testing.T) {
 	principal := Signer{Alg: sign.EdDSA, KeyID: "https://wallet.test/jwks.json#p", Key: principalKey}
 	agent := Signer{Role: "agent", Alg: sign.ES256, KeyID: "https://agent.test/jwks.json#a", Key: agentKey}
 	provider := Signer{Role: "provider", Alg: sign.EdDSA, KeyID: "https://provider.test/jwks.json#s", Key: providerKey}
-	keys := sign.KeySet{principal.KeyID: principalKey.Public(), agent.KeyID: agentKey.Public(), provider.KeyID: providerKey.Public()}
+	keys := &Trust{
+		Principal: sign.KeySet{principal.KeyID: principalKey.Public()},
+		Provider:  sign.KeySet{provider.KeyID: providerKey.Public()},
+		Agent:     sign.KeySet{agent.KeyID: agentKey.Public()},
+	}
 
 	mandate := map[string]any{
 		"spec_version": "0.1",

@@ -1,0 +1,16 @@
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://wallet.example/.well-known/jwks.json#prn_a91f0c3e",
+      "x": "-I9-bVdz-rNjcIEdZH-HTAS9m6Wxqtf8qbqAwZHL2fg"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://wallet.example/.well-known/jwks.json#prn_5d2e7b14",
+      "x": "91H3k6bIVsy-DpW2TUzjX2AJXELp5wuvzQBbkETy-gw"
+    }
+  ]
+}

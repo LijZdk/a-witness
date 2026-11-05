@@ -1,0 +1,16 @@
+{
+  "keys": [
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://newco.example/.well-known/jwks.json#seal-2026",
+      "x": "f-nHGsqA7x4iq3yvECgpBGvC77Yus_bAoHZupbuwGRQ"
+    },
+    {
+      "kty": "OKP",
+      "crv": "Ed25519",
+      "kid": "https://steadybank.example/.well-known/jwks.json#seal-2026",
+      "x": "DCZ0JkbjK_2_7hYOu_g1qd9Q4FJAKklyWdn0LQqYOYY"
+    }
+  ]
+}

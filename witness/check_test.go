@@ -21,7 +21,7 @@ func hasNotChecked(r Report, rule int, fragment string) bool {
 	})
 }
 
-func checkExample(t *testing.T, name string, keys sign.Resolver) Report {
+func checkExample(t *testing.T, name string, keys *Trust) Report {
 	t.Helper()
 	r, err := Check(context.Background(), readFile(t, "examples", name+".mandate.json"), readFile(t, "examples", name+".trace.json"), keys)
 	if err != nil {
@@ -31,7 +31,7 @@ func checkExample(t *testing.T, name string, keys sign.Resolver) Report {
 }
 
 func TestCheckExamples(t *testing.T) {
-	keys := exampleKeys(t)
+	keys := exampleTrust(t)
 
 	for _, name := range []string{"home-insurance-switch", "fixed-rate-savings-switch"} {
 		t.Run(name+" passes", func(t *testing.T) {
@@ -155,7 +155,7 @@ func TestCheckRunsNoRulesOnARecordThatIsNotIntact(t *testing.T) {
 			t.Fatalf("the re-hashed chain should be intact and show rule 9: %+v", skipped)
 		}
 		// With the example keys the edit is caught by the seal signatures.
-		r, err := Check(ctx, mandate, trace, exampleKeys(t))
+		r, err := Check(ctx, mandate, trace, exampleTrust(t))
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -179,24 +179,28 @@ func assertNoRules(t *testing.T, r Report) {
 	}
 }
 
-// buildSigned makes a signed record from nothing with the producer API.
-// principalSeal says who adds a seal signature with signer "principal": nobody (""),
-// the principal's own mandate key ("mandate key"), the agent's key posing as the
-// principal ("agent key"), or, with the mandate also re-signed by that key, the
-// agent's ("agent key, mandate resigned") or the provider's ("provider key,
-// mandate resigned"), as a forger would, since the mandate signature is outside
-// the mandate hash.
+// buildSigned makes a signed record from nothing with the producer API. The
+// agent and the provider sign the seal, and each key is trusted for its own
+// role only. principalSeal says who adds a seal signature with signer
+// "principal": nobody (""), the principal's own mandate key ("mandate key"),
+// the agent's key posing as the principal ("agent key"), or, with the mandate
+// also re-signed by that key, the agent's ("agent key, mandate resigned") or
+// the provider's ("provider key, mandate resigned"), as a forger would, since
+// the mandate signature is outside the mandate hash.
 // Each tweak may change the events before they are chained and sealed.
-func buildSigned(t *testing.T, confirmation, principalSeal string, tweaks ...func(events *[]map[string]any)) (mandate, trace []byte, keys sign.KeySet) {
+func buildSigned(t *testing.T, confirmation, principalSeal string, tweaks ...func(events *[]map[string]any)) (mandate, trace []byte, keys *Trust) {
 	t.Helper()
 	_, principalKey, _ := ed25519.GenerateKey(rand.Reader)
 	_, agentKey, _ := ed25519.GenerateKey(rand.Reader)
 	principal := Signer{Role: "principal", Alg: sign.EdDSA, KeyID: "https://wallet.test/jwks.json#p", Key: principalKey}
 	agent := Signer{Role: "agent", Alg: sign.EdDSA, KeyID: "https://agent.test/jwks.json#a", Key: agentKey}
-	keys = sign.KeySet{principal.KeyID: principalKey.Public(), agent.KeyID: agentKey.Public()}
 	_, providerKey, _ := ed25519.GenerateKey(rand.Reader)
 	provider := Signer{Role: "provider", Alg: sign.EdDSA, KeyID: "https://provider.test/jwks.json#s", Key: providerKey}
-	keys[provider.KeyID] = providerKey.Public()
+	keys = &Trust{
+		Principal: sign.KeySet{principal.KeyID: principalKey.Public()},
+		Provider:  sign.KeySet{provider.KeyID: providerKey.Public()},
+		Agent:     sign.KeySet{agent.KeyID: agentKey.Public()},
+	}
 
 	m := map[string]any{
 		"spec_version":       "0.1",
@@ -240,7 +244,7 @@ func buildSigned(t *testing.T, confirmation, principalSeal string, tweaks ...fun
 	if err := Seal(tr, time.Date(2026, 11, 3, 10, 1, 0, 0, time.UTC)); err != nil {
 		t.Fatal(err)
 	}
-	signers := []Signer{agent}
+	signers := []Signer{agent, provider}
 	posing := func(s Signer) Signer { s.Role = "principal"; return s }
 	switch principalSeal {
 	case "mandate key":
@@ -256,7 +260,7 @@ func buildSigned(t *testing.T, confirmation, principalSeal string, tweaks ...fun
 		if err := SignMandate(m, provider); err != nil {
 			t.Fatal(err)
 		}
-		signers = append(signers, provider, posing(provider))
+		signers = append(signers, posing(provider))
 	}
 	for _, s := range signers {
 		if err := SignSeal(tr, s); err != nil {
@@ -299,35 +303,42 @@ func TestCheckPrincipalSignatureAndWarnings(t *testing.T) {
 		}
 	})
 
-	t.Run("the agent's key posing as the principal does not vouch for the yes", func(t *testing.T) {
+	// Changed by AW-32: this record used to pass with the yes noted as the
+	// agent's claim. A principal seal signature must now use the key that
+	// signed the mandate (S4), so the posing signature makes the record fail.
+	t.Run("the agent's key posing as the principal is refused (S4)", func(t *testing.T) {
 		m, tr, keys := buildSigned(t, "always", "agent key")
 		r, err := Check(ctx, m, tr, keys)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if len(r.Integrity) != 0 || !r.RulesRan {
-			t.Fatalf("the record is genuine, so the rules should run: %+v", r)
-		}
-		if !hasNotChecked(r, 9, "did not sign the seal") {
-			t.Fatalf("a principal-labelled signature made with the agent's key hid the unsigned-yes note: %+v", r.NotChecked)
+		want := "seal signature 2 (principal) uses key 'https://agent.test/jwks.json#a', but the mandate was signed with 'https://wallet.test/jwks.json#p'"
+		if !slices.ContainsFunc(r.Integrity, func(p Problem) bool { return p.Rule == 15 && p.Message == want }) || r.RulesRan || r.Pass() {
+			t.Fatalf("want a refusal with %q: %+v", want, r)
 		}
 	})
 
 	// The mandate signature is outside the mandate hash, so the agent can re-sign
 	// the mandate with a key it controls and label a seal signature "principal".
-	// The approval in these records is the agent's own writing.
-	for _, mode := range []string{"agent key, mandate resigned", "provider key, mandate resigned"} {
-		t.Run("a mandate re-signed with the "+mode+" does not vouch for the yes", func(t *testing.T) {
+	// Changed by AW-32: the record is refused outright (M1, then M4), where it
+	// used to pass with the yes noted as the agent's claim.
+	for mode, keyID := range map[string]string{
+		"agent key, mandate resigned":    "https://agent.test/jwks.json#a",
+		"provider key, mandate resigned": "https://provider.test/jwks.json#s",
+	} {
+		t.Run("a mandate re-signed with the "+mode+" is refused (M1)", func(t *testing.T) {
 			m, tr, keys := buildSigned(t, "always", mode)
 			r, err := Check(ctx, m, tr, keys)
 			if err != nil {
 				t.Fatal(err)
 			}
-			if len(r.Integrity) != 0 || !r.RulesRan {
-				t.Fatalf("the record is genuine, so the rules should run: %+v", r)
+			got := rule15(r.Integrity)
+			want := []string{
+				"mandate signature: key '" + keyID + "' is not trusted for the principal",
+				"seal signatures were not checked, because the mandate signature is not valid",
 			}
-			if !hasNotChecked(r, 9, "did not sign the seal") {
-				t.Fatalf("the unsigned-yes note was hidden: %+v", r.NotChecked)
+			if !slices.Equal(got, want) || r.RulesRan || r.Pass() {
+				t.Fatalf("got %q, want %q: %+v", got, want, r)
 			}
 		})
 	}
@@ -409,10 +420,7 @@ func FuzzCheck(f *testing.F) {
 	}
 	f.Add([]byte(`{}`), []byte(`{}`))
 	f.Add([]byte(`[]`), []byte(`null`))
-	keys, err := sign.ParseJWKS(readFileF(f, "examples", "keys.jwks.json"))
-	if err != nil {
-		f.Fatal(err)
-	}
+	keys := loadTrust(f, func(name string) []byte { return readFileF(f, "examples", name) })
 	f.Fuzz(func(t *testing.T, mandate, trace []byte) {
 		_, _ = Check(context.Background(), mandate, trace, SkipSignatures)
 		_, _ = Check(context.Background(), mandate, trace, keys)

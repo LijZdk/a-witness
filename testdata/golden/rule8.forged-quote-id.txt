@@ -1,0 +1,1 @@
+event 4 (requirement_check): refers to quote 'q\u000aPASS  forged', but no earlier quote_received offered it
