@@ -243,14 +243,21 @@ func TestJWKSFetcherSlowHostDoesNotBlockOthers(t *testing.T) {
 		t.Fatal("slow handler was never entered")
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	got, err := f.PublicKey(ctx, fast.URL+"/jwks.json#fast")
-	if err != nil {
-		t.Fatalf("fast host blocked behind slow host: %v", err)
-	}
-	if !fastPub.Equal(got) {
-		t.Error("fast host: wrong key")
+	fastDone := make(chan result, 1)
+	go func() {
+		k, err := f.PublicKey(context.Background(), fast.URL+"/jwks.json#fast")
+		fastDone <- result{k, err}
+	}()
+	select {
+	case r := <-fastDone:
+		if r.err != nil {
+			t.Fatalf("fast lookup: %v", r.err)
+		}
+		if !fastPub.Equal(r.key.(ed25519.PublicKey)) {
+			t.Error("fast host: wrong key")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("fast lookup blocked behind the slow host")
 	}
 	select {
 	case r := <-slowDone:
@@ -346,6 +353,139 @@ func TestJWKSFetcherRetriesAfterFailure(t *testing.T) {
 	}
 	if got := requests.Load(); got != 2 {
 		t.Errorf("fetched %d times, want 2 (failure not cached, success cached)", got)
+	}
+}
+
+// A caller whose ctx is live must not fail because the caller that started
+// the fetch had its ctx cancelled.
+func TestJWKSFetcherWaiterSurvivesFetcherCancel(t *testing.T) {
+	body, pub := jwksBody(t, "k1")
+	var requests atomic.Int32
+	entered := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(entered)
+			<-r.Context().Done() // the first caller gives up
+			return
+		}
+		w.Write(body)
+	}))
+	defer srv.Close()
+	f := &JWKSFetcher{Client: srv.Client()}
+	id := srv.URL + "/jwks.json#k1"
+
+	ctxA, cancelA := context.WithCancel(context.Background())
+	defer cancelA()
+	aDone := make(chan error, 1)
+	go func() { _, err := f.PublicKey(ctxA, id); aDone <- err }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first fetch never started")
+	}
+
+	type result struct {
+		key any
+		err error
+	}
+	bDone := make(chan result, 1)
+	go func() {
+		k, err := f.PublicKey(context.Background(), id)
+		bDone <- result{k, err}
+	}()
+	time.Sleep(50 * time.Millisecond) // let B join A's fetch
+	cancelA()
+
+	select {
+	case r := <-bDone:
+		if r.err != nil {
+			t.Fatalf("B failed because A's ctx ended: %v", r.err)
+		}
+		if !pub.Equal(r.key.(ed25519.PublicKey)) {
+			t.Error("B got the wrong key")
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("B did not finish")
+	}
+	if err := <-aDone; err == nil {
+		t.Error("A succeeded, want its ctx error")
+	}
+}
+
+func TestJWKSFetcherWaiterCancelReturnsPromptly(t *testing.T) {
+	body, _ := jwksBody(t, "k1")
+	entered := make(chan struct{})
+	release := make(chan struct{})
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(entered)
+		<-release
+		w.Write(body)
+	}))
+	defer srv.Close()
+	defer func() {
+		select {
+		case <-release:
+		default:
+			close(release)
+		}
+	}()
+	f := &JWKSFetcher{Client: srv.Client()}
+	id := srv.URL + "/jwks.json#k1"
+
+	leaderDone := make(chan error, 1)
+	go func() { _, err := f.PublicKey(context.Background(), id); leaderDone <- err }()
+	select {
+	case <-entered:
+	case <-time.After(2 * time.Second):
+		t.Fatal("fetch never started")
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	waiterDone := make(chan error, 1)
+	go func() { _, err := f.PublicKey(ctx, id); waiterDone <- err }()
+	time.Sleep(50 * time.Millisecond)
+	cancel()
+	select {
+	case err := <-waiterDone:
+		if !errors.Is(err, context.Canceled) {
+			t.Errorf("waiter: got %v, want context.Canceled", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("waiter did not return after its ctx was cancelled")
+	}
+
+	close(release)
+	select {
+	case err := <-leaderDone:
+		if err != nil {
+			t.Errorf("leader: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("leader did not finish")
+	}
+}
+
+func TestJWKSFetcherCachedLookupIgnoresCancelledCtx(t *testing.T) {
+	body, pub := jwksBody(t, "k1")
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(body)
+	}))
+	defer srv.Close()
+	f := &JWKSFetcher{Client: srv.Client()}
+	id := srv.URL + "/jwks.json#k1"
+	if _, err := f.PublicKey(context.Background(), id); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	for i := range 200 {
+		got, err := f.PublicKey(ctx, id)
+		if err != nil {
+			t.Fatalf("lookup %d of a cached key with a cancelled ctx: %v", i, err)
+		}
+		if !pub.Equal(got) {
+			t.Fatal("wrong key")
+		}
 	}
 }
 

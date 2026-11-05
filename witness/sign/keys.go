@@ -122,9 +122,10 @@ type JWKSFetcher struct {
 // jwksEntry is one URL's fetch, in flight or finished. set and err are
 // written before done is closed and read only after it.
 type jwksEntry struct {
-	done chan struct{}
-	set  KeySet
-	err  error
+	done     chan struct{}
+	set      KeySet
+	err      error
+	ctxEnded bool // err happened after the fetching caller's own ctx ended
 }
 
 // maxJWKSBytes caps how much a fetch will read, so a hostile URL cannot
@@ -149,35 +150,52 @@ func (f *JWKSFetcher) PublicKey(ctx context.Context, keyID string) (crypto.Publi
 }
 
 func (f *JWKSFetcher) fetch(ctx context.Context, address string) (KeySet, error) {
-	f.mu.Lock()
-	e, ok := f.entries[address]
-	if !ok {
-		e = &jwksEntry{done: make(chan struct{})}
-		if f.entries == nil {
-			f.entries = map[string]*jwksEntry{}
+	for {
+		f.mu.Lock()
+		e, ok := f.entries[address]
+		if !ok {
+			e = &jwksEntry{done: make(chan struct{})}
+			if f.entries == nil {
+				f.entries = map[string]*jwksEntry{}
+			}
+			f.entries[address] = e
 		}
-		f.entries[address] = e
-	}
-	f.mu.Unlock()
+		f.mu.Unlock()
 
-	if ok {
+		if !ok {
+			// This caller owns the fetch. The lock is not held here.
+			e.set, e.err = f.get(ctx, address)
+			if e.err != nil {
+				e.ctxEnded = ctx.Err() != nil
+				f.mu.Lock()
+				delete(f.entries, address)
+				f.mu.Unlock()
+			}
+			close(e.done)
+			return e.set, e.err
+		}
+
+		// A finished entry is used without consulting ctx.
 		select {
 		case <-e.done:
-			return e.set, e.err
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		default:
+			select {
+			case <-e.done:
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			}
 		}
+		if e.err != nil && e.ctxEnded {
+			// The fetcher's own context ended, which says nothing about
+			// this caller. Give up only if this caller's ctx ended too;
+			// otherwise look the entry up again and fetch with our own.
+			if err := ctx.Err(); err != nil {
+				return nil, err
+			}
+			continue
+		}
+		return e.set, e.err
 	}
-
-	// This caller owns the fetch. The lock is not held here.
-	e.set, e.err = f.get(ctx, address)
-	if e.err != nil {
-		f.mu.Lock()
-		delete(f.entries, address)
-		f.mu.Unlock()
-	}
-	close(e.done)
-	return e.set, e.err
 }
 
 // get does the network fetch for one URL.
