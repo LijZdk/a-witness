@@ -74,19 +74,28 @@ func TestHashVectors(t *testing.T) {
 	}
 }
 
-func exampleKeys(t *testing.T) sign.KeySet {
+// exampleTrust trusts the examples' public keys, one file per role.
+func exampleTrust(t *testing.T) *Trust {
 	t.Helper()
-	keys, err := sign.ParseJWKS(readFile(t, "examples", "keys.jwks.json"))
-	if err != nil {
-		t.Fatal(err)
+	return loadTrust(t, func(name string) []byte { return readFile(t, "examples", name) })
+}
+
+func loadTrust(tb testing.TB, read func(name string) []byte) *Trust {
+	tb.Helper()
+	set := func(role string) sign.KeySet {
+		keys, err := sign.ParseJWKS(read("keys." + role + ".jwks.json"))
+		if err != nil {
+			tb.Fatal(err)
+		}
+		return keys
 	}
-	return keys
+	return &Trust{Principal: set("principal"), Provider: set("provider"), Agent: set("agent")}
 }
 
 // The examples were written and signed by Python, so passing them shows the
 // two implementations agree on real documents, not just on the vectors.
 func TestExamplesVerify(t *testing.T) {
-	keys := exampleKeys(t)
+	keys := exampleTrust(t)
 	for _, name := range examples {
 		t.Run(name, func(t *testing.T) {
 			mandate := readFile(t, "examples", name+".mandate.json")
