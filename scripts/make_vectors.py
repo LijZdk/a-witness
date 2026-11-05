@@ -151,6 +151,8 @@ def signature_vectors():
              jws.sign(ed, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate, header={"alg": "ES256", "kid": ed_kid, "typ": jws.MANDATE_TYP})),
         case("header has an extra member", False,
              jws.sign(ed, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate, header={"alg": "EdDSA", "crit": ["b64"], "kid": ed_kid, "typ": jws.MANDATE_TYP})),
+        case("header has a duplicate member", False,
+             jws.sign_raw_header(ed, b'{"alg":"EdDSA","alg":"EdDSA","kid":"' + ed_kid.encode() + b'","typ":"a-witness-mandate"}', mandate)),
         case("signed by a different key", False, jws.sign(other, "EdDSA", ed_kid, jws.MANDATE_TYP, mandate)),
         case("ES256 signature in ASN.1 DER instead of R and S", False,
              f"{es_protected}..{jws.b64(es.sign(es_data, ec.ECDSA(ec.hashes.SHA256(), deterministic_signing=True)))}",
