@@ -343,6 +343,12 @@ def confirmation_problems(mandate, trace, signed=None, require=False, seal_signe
                     f"event {seq} (action_executed): the agent committed {committed} "
                     f"on quote '{esc(payload['quote_id'])}', but the principal approved quote '{esc(approved_quote)}'"
                 )
+            elif approved_quote != selected:
+                # A signed yes for a quote other than the latest selection does not cover the selected one.
+                problems.append(
+                    f"event {seq} (action_executed): the agent committed {committed} "
+                    f"on quote '{esc(payload['quote_id'])}', but the principal approved quote '{esc(selected)}'"
+                )
             if pending and approved_signed and (amount["amount"], amount["currency"]) != (approved_amount["amount"], approved_amount["currency"]):
                 problems.append(
                     f"event {seq} (action_executed): the agent committed {committed}, "
