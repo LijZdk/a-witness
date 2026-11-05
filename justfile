@@ -8,6 +8,9 @@
 
 python := env("PYTHON", "python3")
 
+# Must match GOVULNCHECK_VERSION in .github/workflows/check.yml.
+govulncheck := "golang.org/x/vuln/cmd/govulncheck@v1.9.0"
+
 default:
     @just --list
 
@@ -30,11 +33,10 @@ check-full: check-fast
     GOTOOLCHAIN="go$(go list -m -f '{{{{.GoVersion}}')" go test ./...
     @echo "== staticcheck, as CI runs it"
     go run honnef.co/go/tools/cmd/staticcheck@v0.8.2 ./...
-    # The govulncheck version must match GOVULNCHECK_VERSION in .github/workflows/check.yml.
     @echo "== govulncheck on the oldest Go that go.mod supports, as CI's go job does"
-    GOTOOLCHAIN="go$(go list -m -f '{{{{.GoVersion}}')" go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+    GOTOOLCHAIN="go$(go list -m -f '{{{{.GoVersion}}')" go run {{govulncheck}} ./...
     @echo "== govulncheck on the current Go, as CI's vulnerabilities job does"
-    go run golang.org/x/vuln/cmd/govulncheck@v1.9.0 ./...
+    go run {{govulncheck}} ./...
     @echo "== pip-audit on requirements.txt, as CI does"
     "{{python}}" -m pip_audit -r requirements.txt
     @echo "== scripts/check.sh: examples, test vectors, Python and JavaScript cross-checks, validator cases"
