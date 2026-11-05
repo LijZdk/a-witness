@@ -446,8 +446,8 @@ def savings_example():
 def write_keys():
     """The public half of every example key, by full key id, in one file per role.
 
-    A verifier trusts a key for one role only (SPEC.md, "Keys"), so the roles
-    are separate files, never one combined set."""
+    A verifier keeps one file per role and the files disjoint (SPEC.md,
+    "Keys"); one combined set used for every role is refused."""
     for role, holders in KEY_ROLES.items():
         keys = [public_jwk(example_key(holder).public_key(), KEY_IDS[holder]) for holder in holders]
         (OUT / f"keys.{role}.jwks.json").write_text(json.dumps({"keys": keys}, indent=2) + "\n")
