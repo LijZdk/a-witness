@@ -27,7 +27,9 @@ Two small, open JSON formats plus tooling:
 
 Every field is explained in plain English in [SPEC.md](SPEC.md), along with the hashing rules and what a verifier checks.
 
-Later phases add a verifier CLI, drop-in middleware for MCP servers, and mappings to AP2 and UCP.
+**Mappings to other protocols:** how a mandate and trace relate to [AP2](docs/mappings/ap2.md), [UCP](docs/mappings/ucp.md) and [MCP](docs/mappings/mcp.md), with the mismatches and open questions listed.
+
+Later phases add a verifier CLI and drop-in middleware for MCP servers.
 
 ## What it is not
 
