@@ -27,7 +27,6 @@ type Trust struct {
 	// RequirePrincipalSeal also requires a valid seal signature from the
 	// principal, made with the key that signed the mandate.
 	RequirePrincipalSeal bool
-
 }
 
 // Principal and Provider are sign.Pinned so that their key source is fixed by
