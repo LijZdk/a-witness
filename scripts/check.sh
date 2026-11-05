@@ -45,6 +45,25 @@ for v in wrong[:5]:
 sys.exit(f"not ok  {len(wrong)} of {len(vectors)} numbers differ" if wrong else print(f"ok      all {len(vectors)} numbers match"))
 EOF
 
+echo "== the Python implementation agrees with every signature vector"
+"$PY" - <<'EOF'
+import json, sys
+sys.path.insert(0, "scripts")
+import jws
+vectors = json.load(open("testdata/vectors/signatures.json"))["vectors"]
+wrong = []
+for v in vectors:
+    try:
+        jws.verify(v["jws"], v["payload"].encode(), jws.load_jwk(v["jwk"]), v["alg"], v["kid"], v["typ"])
+        got, why = True, ""
+    except ValueError as e:
+        got, why = False, str(e)
+    if got != v["valid"]:
+        wrong.append(v)
+        print("  ", v["name"], "wanted valid =", v["valid"], why)
+sys.exit(f"not ok  {len(wrong)} of {len(vectors)} signature vectors differ" if wrong else print(f"ok      all {len(vectors)} signature vectors match"))
+EOF
+
 echo "== the passing examples pass"
 "$PY" scripts/validate.py "$M" "$T" "${KEYS[@]}"
 "$PY" scripts/validate.py examples/fixed-rate-savings-switch.mandate.json examples/fixed-rate-savings-switch.trace.json "${KEYS[@]}"

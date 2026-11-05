@@ -70,12 +70,38 @@ def sign(key, alg: str, kid: str, typ: str, payload: bytes, header: dict | None 
     return f"{protected}..{b64(sig)}"
 
 
+def _no_duplicates(pairs):
+    names = [name for name, _ in pairs]
+    for name in names:
+        if names.count(name) > 1:
+            raise ValueError(f"the JWS header has a duplicate member {name!r}")
+    return dict(pairs)
+
+
+def parse_header(raw: bytes) -> dict:
+    """The protected header as a dict. Like witness/sign, refuse duplicate member names
+    (json.loads alone would keep the last) and anything that is not JSON."""
+    try:
+        return json.loads(raw.decode("utf-8"), object_pairs_hook=_no_duplicates)
+    except UnicodeDecodeError:
+        raise ValueError("the JWS header is not valid UTF-8") from None
+    except json.JSONDecodeError as e:
+        raise ValueError(f"the JWS header is not valid JSON: {e}") from None
+
+
+def sign_raw_header(key, header_bytes: bytes, payload: bytes) -> str:
+    """Ed25519 detached JWS over exactly these header bytes, for test vectors only: a dict
+    cannot hold the malformed headers (such as duplicate members) that vectors need."""
+    protected = b64(header_bytes)
+    return f"{protected}..{b64(key.sign(f'{protected}.{b64(payload)}'.encode()))}"
+
+
 def verify(jws: str, payload: bytes, public_key, alg: str, kid: str, typ: str) -> None:
     """Raise ValueError saying why, unless jws is a valid signature over payload."""
     parts = jws.split(".")
     if len(parts) != 3 or parts[1] != "":
         raise ValueError("not a detached JWS (expected header..signature)")
-    header = json.loads(unb64(parts[0]))
+    header = parse_header(unb64(parts[0]))
     if not isinstance(header, dict) or set(header) != {"alg", "kid", "typ"}:
         raise ValueError("the JWS header must hold exactly alg, kid and typ")
     for name, want in (("alg", alg), ("kid", kid), ("typ", typ)):
