@@ -11,8 +11,11 @@ Checks, in order:
   6. Every quote_received has a unique quote_id, and every quote an event
      refers to was received earlier in the trace.
   7. The seal covers the final event.
-  8. With --keys: the principal signed the mandate, every seal signature is
-     valid, and the agent the mandate names signed the seal with its key.
+  8. Signatures (SPEC.md rule 15), against keys the verifier trusts for each
+     role: the mandate is signed with a principal key; the agent the mandate
+     names signed the seal with exactly the key it names; a provider signed
+     the seal with a provider key; with --require-principal-seal, the
+     principal did too. A key trusted for one role is refused in another.
   9. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
 
@@ -22,14 +25,26 @@ what it was allowed to?". The report says which kind of failure it found.
 The other mandate rules (price limits, scope, expiry and so on) arrive with
 the Phase 3 verifier.
 
-Usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]
+Usage:
+  python scripts/validate.py M T --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal]
+  python scripts/validate.py M T --skip-signatures
+
+Each F is a plain JWKS file, read from disk, so which keys are trusted for
+which role is decided by the files you give, never by a key id inside the
+documents. (The Go verifier can also pin JWKS URLs; this script reads files.)
+Choose the files to hold only the parties to the journey being checked. With
+--skip-signatures nothing about the signatures is checked and the result is
+never a PASS.
+
 Exit codes: 0 pass, 1 fail, 2 bad usage.
 """
+import argparse
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
 
+from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
 from jsonschema import Draft202012Validator, FormatChecker
 from referencing import Registry, Resource
 
@@ -244,15 +259,32 @@ def fail(problems, headline=""):
     return 1
 
 
-def signature_problems(mandate, trace, keys):
-    """SPEC.md rule 15. keys maps key ids to public keys: which keys to trust."""
+def spki(key):
+    """A public key's bytes (DER SubjectPublicKeyInfo), to tell whether two key ids name the same key."""
+    return key.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+
+
+def signature_problems(mandate, trace, principal, provider, agent, require_principal_seal=False):
+    """SPEC.md rule 15, in the order the Go verifier (witness/rule15.go) checks it.
+
+    principal, provider and agent map key ids to public keys: the keys trusted for
+    each role. A key trusted for one role is refused in another, by id and by key
+    bytes. The agent's keys are consulted only for the key the mandate names, and
+    only once the principal's signature on the mandate has verified.
+
+    1. The mandate signature's key is a principal key, not also a provider key, and verifies.
+    2. If not, stop: the seal signatures are not checked.
+    3. The mandate names an agent key that the agent keys hold, that is neither a
+       principal nor a provider key, and is not the key that signed the mandate.
+    4. Each seal signature suits its role: the agent's uses exactly that key; the
+       provider's a provider key (and nothing else); the principal's the key that
+       signed the mandate; any other signer is refused.
+    5. The seal has a valid agent signature and a valid provider signature, and
+       a principal one if require_principal_seal.
+    """
     problems = []
 
-    def check(sig, where, typ, payload):
-        key = keys.get(sig["key_id"])
-        if key is None:
-            problems.append(f"{where}: key {sig['key_id']!r} is not in the key file")
-            return False
+    def verifies(sig, where, typ, payload, key):
         try:
             jws.verify(sig["value"], payload, key, sig["alg"], sig["key_id"], typ)
             return True
@@ -260,42 +292,133 @@ def signature_problems(mandate, trace, keys):
             problems.append(f"{where} does not verify: {e}")
             return False
 
-    check(mandate["signature"], "mandate signature", jws.MANDATE_TYP, jws.mandate_payload(mandate))
-    agent_key = mandate["agent"].get("public_key_ref")
+    msig = mandate["signature"]
+    p = msig["key_id"]
+    principal_key = principal.get(p)
+    if principal_key is None:
+        problems.append(f"mandate signature: key '{p}' is not trusted for the principal")
+    else:
+        if p in provider:
+            problems.append(f"mandate signature: key '{p}' is also trusted for the provider")
+        verifies(msig, "mandate signature", jws.MANDATE_TYP, jws.mandate_payload(mandate), principal_key)
+    if problems:
+        problems.append("seal signatures were not checked, because the mandate signature is not valid")
+        return problems
+
+    agent_ref = mandate["agent"].get("public_key_ref")
+    agent_key = None
+    agent_usable = False
+    if not agent_ref:
+        problems.append("the mandate names no agent key (agent.public_key_ref)")
+    else:
+        agent_usable = True
+        for role, keys in (("principal", principal), ("provider", provider)):
+            if agent_ref in keys:
+                problems.append(f"the agent's key '{agent_ref}' is also trusted for the {role}")
+                agent_usable = False
+        agent_key = agent.get(agent_ref)
+        if agent_key is None:
+            problems.append(f"the agent's key '{agent_ref}' could not be found")
+            agent_usable = False
+        elif spki(agent_key) == spki(principal_key):
+            problems.append(f"the agent's key '{agent_ref}' is the key that signed the mandate")
+            agent_usable = False
+
     payload = jws.seal_payload(trace)
-    agent_signed = False
+    agent_signed = provider_signed = principal_signed = False
     for i, sig in enumerate(trace["seal"]["signatures"]):
-        valid = check(sig, f"seal signature {i} ({sig['signer']})", jws.SEAL_TYP, payload)
-        if sig["signer"] != "agent":
-            continue
-        if agent_key and sig["key_id"] != agent_key:
-            problems.append(f"seal signature {i} (agent) uses key {sig['key_id']!r}, but the mandate names the agent's key as {agent_key!r}")
-            continue
-        agent_signed = agent_signed or valid
+        signer, key_id = sig["signer"], sig["key_id"]
+        where = f"seal signature {i} ({signer})"
+        if signer == "agent":
+            if agent_ref and key_id != agent_ref:
+                problems.append(f"seal signature {i} (agent) uses key '{key_id}', but the mandate names the agent's key as '{agent_ref}'")
+                continue
+            if agent_usable and verifies(sig, where, jws.SEAL_TYP, payload, agent_key):
+                agent_signed = True
+        elif signer == "provider":
+            key = provider.get(key_id)
+            if key is None:
+                problems.append(f"seal signature {i} (provider): key '{key_id}' is not trusted for the provider")
+            elif key_id in principal:
+                problems.append(f"seal signature {i} (provider): key '{key_id}' is also trusted for the principal")
+            elif agent_key is not None and spki(key) == spki(agent_key):
+                problems.append(f"seal signature {i} (provider) uses the same key as the agent")
+            elif spki(key) == spki(principal_key):
+                problems.append(f"seal signature {i} (provider) uses the same key as the mandate signature")
+            elif verifies(sig, where, jws.SEAL_TYP, payload, key):
+                provider_signed = True
+        elif signer == "principal":
+            if key_id != p:
+                problems.append(f"seal signature {i} (principal) uses key '{key_id}', but the mandate was signed with '{p}'")
+            elif verifies(sig, where, jws.SEAL_TYP, payload, principal_key):
+                principal_signed = True
+        else:
+            problems.append(f"seal signature {i} ({signer}): this verifier trusts no keys for that signer")
+
     if not agent_signed:
         problems.append("the seal has no valid signature from the agent the mandate names")
+    if not provider_signed:
+        problems.append("the seal has no valid signature from a provider")
+    if require_principal_seal and not principal_signed:
+        problems.append("the seal has no valid signature from the principal who signed the mandate")
     return problems
 
 
-USAGE = "usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]"
+class Parser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"validate.py: {message}", file=sys.stderr)
+        print(USAGE, file=sys.stderr)
+        raise SystemExit(2)
+
+
+USAGE = """usage: python scripts/validate.py <name>.mandate.json <name>.trace.json KEYS
+KEYS is one of:
+  --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal]
+      F is a JWKS file (plain JSON Web Key Set) of the keys trusted for that role
+  --skip-signatures
+      leave out the signature checks; the result is then never a PASS"""
+
+KEY_FLAGS = (("principal_keys", "--principal-keys"), ("provider_keys", "--provider-keys"), ("agent_keys", "--agent-keys"))
+
+
+def parse_args(argv):
+    parser = Parser(prog="validate.py", usage=USAGE, allow_abbrev=False)
+    parser.add_argument("mandate")
+    parser.add_argument("trace")
+    for dest, flag in KEY_FLAGS:
+        parser.add_argument(flag, dest=dest)
+    parser.add_argument("--require-principal-seal", action="store_true")
+    parser.add_argument("--skip-signatures", action="store_true")
+    parser.add_argument("--keys", help=argparse.SUPPRESS)
+    args = parser.parse_args(argv)
+    given = [flag for dest, flag in KEY_FLAGS if getattr(args, dest)]
+    if args.keys:
+        parser.error("--keys is gone: one key file cannot say which key is trusted for which party. "
+                     "Give --principal-keys, --provider-keys and --agent-keys, one JWKS file for each role")
+    if args.skip_signatures and (given or args.require_principal_seal):
+        parser.error("--skip-signatures cannot be combined with key files or --require-principal-seal")
+    if not args.skip_signatures and len(given) != len(KEY_FLAGS):
+        parser.error("signatures are checked with all of --principal-keys, --provider-keys and --agent-keys "
+                     "(or leave them out explicitly with --skip-signatures)")
+    return args
 
 
 def run(argv):
-    keys_path = None
-    if len(argv) == 4 and argv[2] == "--keys":
-        keys_path = argv[3]
-    elif len(argv) != 2:
-        print(USAGE, file=sys.stderr)
-        return 2
-    mandate_path, trace_path = argv[:2]
+    args = parse_args(argv)
+    mandate_path, trace_path = args.mandate, args.trace
 
     try:
         mandate, trace = load(mandate_path), load(trace_path)
-        keys = jws.load_jwks(keys_path) if keys_path else None
     except Unreadable as e:
         return fail([str(e)])
-    except (OSError, ValueError, KeyError) as e:
-        return fail([f"{keys_path}: cannot read the key file ({e})"])
+    keys = {}
+    if not args.skip_signatures:
+        for dest, flag in KEY_FLAGS:
+            path = getattr(args, dest)
+            try:
+                keys[dest] = jws.load_jwks(path)
+            except (OSError, ValueError, KeyError) as e:
+                return fail([f"{path}: cannot read the key file ({e})"])
 
     name = Path(trace_path).name
 
@@ -306,8 +429,9 @@ def run(argv):
 
     problems = (chain_problems(mandate, trace) + time_problems(trace)
                 + evidence_problems(trace) + reference_problems(trace))
-    if keys is not None:
-        problems += signature_problems(mandate, trace, keys)
+    if not args.skip_signatures:
+        problems += signature_problems(mandate, trace, keys["principal_keys"], keys["provider_keys"],
+                                       keys["agent_keys"], args.require_principal_seal)
     if problems:
         return fail(problems, f"{name}: the record is broken or has been tampered with")
 
@@ -317,8 +441,11 @@ def run(argv):
 
     setting = mandate["human_confirmation"]
     confirmation = "confirmation rule met" if setting == "always" else f"confirmation rule not checked for '{setting}' yet"
-    signatures = "signatures valid" if keys is not None else "signatures NOT checked (no --keys)"
-    print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}")
+    signatures = "signatures NOT checked (--skip-signatures)" if args.skip_signatures else "signatures valid"
+    summary = f"schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}"
+    if args.skip_signatures:
+        return fail([summary], f"{name}: signatures were not checked (--skip-signatures), so this is not a pass")
+    print(f"PASS  {name}: {summary}")
     return 0
 
 
