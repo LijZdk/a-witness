@@ -693,6 +693,19 @@ def yes_for_unselected(t):
     t["events"][10]["payload"]["quote_id"] = "q_incumbent"  # bought what Sam signed for, though q_newco was selected
 
 
+def signed_then_unsigned(t):
+    """A signed yes covers the first purchase; an unsigned yes (copy without the signature) is all that
+    stands behind a second selection and purchase."""
+    sel2 = copy.deepcopy(t["events"][8])
+    yes2 = copy.deepcopy(t["events"][CONF])
+    yes2["payload"].pop("principal_signature")
+    act2 = copy.deepcopy(t["events"][10])
+    for e in (sel2, yes2, act2):
+        e["at"] = t["events"][10]["at"]  # keep event times from going backwards
+    t["events"][11:11] = [sel2, yes2, act2]  # after the first action, before the post-sale notice
+
+
+variant("conf-signed-then-unsigned", signed_then_unsigned)
 variant("conf-other-selection", yes_after_other_selection)
 variant("conf-unselected", yes_for_unselected)
 
@@ -789,11 +802,14 @@ expect_line "a purchase in another currency than the one signed is refused (F2)"
   "event 10 (action_executed): the agent committed 298.00 EUR, but the principal approved 298.00 GBP" \
   "$M" "$TMP/conf-currency-mismatch.json" "${KEYS[@]}"
 expect_line "a signed yes given after the agent selected another quote does not cover the purchase" \
-  "event 11 (action_executed): the agent committed 298.00 GBP on quote 'q_newco', but the principal approved quote 'q_incumbent'" \
+  "$(cat testdata/golden/rule9.signed-other-quote.txt)" \
   "$M" "$TMP/conf-other-selection.json" "${KEYS[@]}"
 expect_line "a signed yes for a quote the agent did not select does not cover the purchase" \
-  "event 10 (action_executed): the agent committed 298.00 GBP on quote 'q_incumbent', but the principal approved quote 'q_newco'" \
+  "event 10 (action_executed): the principal signed approval for quote 'q_incumbent', but the agent selected quote 'q_newco'" \
   "$M" "$TMP/conf-unselected.json" "${KEYS[@]}"
+expect_line "under the policy an unsigned yes behind a second purchase is refused even after a signed one (F1)" \
+  "event 13 (action_executed): the agent committed 298.00 GBP on an approval the principal did not sign, but this verifier counts only approvals the principal signed" \
+  "$M" "$TMP/conf-signed-then-unsigned.json" "${KEYS[@]}" "${POLICY[@]}"
 # expect_report <label> <the whole report> <validate.py args...>: every line, so an extra one is caught.
 expect_report() {
   local label="$1" want="$2"; shift 2

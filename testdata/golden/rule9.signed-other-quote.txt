@@ -1,0 +1,1 @@
+event 11 (action_executed): the principal signed approval for quote 'q_newco', but the agent selected quote 'q_incumbent'

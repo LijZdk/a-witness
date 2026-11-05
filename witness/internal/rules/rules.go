@@ -329,8 +329,8 @@ func checkConfirmation(setting string, events []event, signing Signing) ([]Findi
 			case approvedQuote != selected:
 				// A signed yes for a quote other than the latest selection does not cover the selected one.
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
-					"event %d (action_executed): the agent committed %s %s on quote '%s', but the principal approved quote '%s'",
-					ev.seq, text.Esc(value), text.Esc(currency), text.Esc(quote), text.Esc(selected))})
+					"event %d (action_executed): the principal signed approval for quote '%s', but the agent selected quote '%s'",
+					ev.seq, text.Esc(approvedQuote), text.Esc(selected))})
 			}
 			if pending && approvedSigned && (value != approvedAmount || currency != approvedCurrency) {
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(

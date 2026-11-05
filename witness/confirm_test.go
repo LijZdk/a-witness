@@ -440,12 +440,12 @@ func TestConfirmation_SignedYesNeedsTheSelectedQuote(t *testing.T) {
 			other := deepCopy(t, e[8].(map[string]any))
 			payload([]any{other}, 0)["quote_id"] = "q_incumbent"
 			insertAfter(tr, 8, other) // selects q_incumbent after q_newco, before Sam's yes
-		}, "event 11 (action_executed): the agent committed 298.00 GBP on quote 'q_newco', but the principal approved quote 'q_incumbent'"},
+		}, "event 11 (action_executed): the principal signed approval for quote 'q_newco', but the agent selected quote 'q_incumbent'"},
 		"YesForUnselectedQuote": {func(tr map[string]any, e []any) {
 			payload(e, confSeq)["quote_id"] = "q_incumbent"
 			resignConfirmation(t, tr)
 			payload(e, 10)["quote_id"] = "q_incumbent"
-		}, "event 10 (action_executed): the agent committed 298.00 GBP on quote 'q_incumbent', but the principal approved quote 'q_newco'"},
+		}, "event 10 (action_executed): the principal signed approval for quote 'q_incumbent', but the agent selected quote 'q_newco'"},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -454,6 +454,12 @@ func TestConfirmation_SignedYesNeedsTheSelectedQuote(t *testing.T) {
 				r, err := Check(context.Background(), mandate, trace, confTrust(t, require))
 				if err != nil {
 					t.Fatal(err)
+				}
+				if name == "YesAfterOtherSelection" && c.want != "event 11 (action_executed): the principal signed approval for quote 'q_newco', but the agent selected quote 'q_incumbent'" {
+					t.Fatal("unexpected message")
+				}
+				if name == "YesAfterOtherSelection" && golden(t, "rule9.signed-other-quote.txt") != c.want {
+					t.Fatal("the golden file scripts/check.sh reads differs from the message")
 				}
 				if got := rule9Messages(r); len(r.Integrity) != 0 || !slices.Equal(got, []string{c.want}) || r.Pass() {
 					t.Fatalf("require=%v: got %q %+v", require, got, r.Integrity)
