@@ -18,7 +18,7 @@ scripts/check.sh      # scripts, examples and test vectors (needs Python and Nod
 go vet ./... && go test ./...
 ```
 
-CI runs both, plus `gofmt`, `staticcheck` and `govulncheck`. All must pass before a pull request is merged. The minimum Go version is the one in `go.mod` (currently 1.26); we support the Go releases that still receive security fixes and raise the minimum when one stops receiving them.
+CI runs both, plus `gofmt`, `go mod verify`, `staticcheck`, `govulncheck` and `pip-audit`. All must pass before a pull request is merged. The version in `go.mod` (currently 1.26.0) is the oldest Go the module builds with, and the vulnerability scan uses the newest patch of that release, so build with the latest patch release of a supported Go. We support the Go releases that still receive security fixes and raise the minimum when one stops receiving them.
 
 Ground rules:
 
