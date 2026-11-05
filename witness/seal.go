@@ -4,6 +4,7 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
+	"maps"
 	"time"
 
 	"github.com/LijZdk/a-witness/witness/canon"
@@ -172,6 +173,45 @@ func traceIdentity(trace map[string]any) (mandateHash, traceID string, err error
 	return mandateHash, traceID, nil
 }
 
+// walkSignedConfirmations visits, in event order, each human_confirmation whose
+// payload has a principal_signature, with the bytes that were (or would be)
+// signed for it and its confirmation_ref, and returns the ref of the last one
+// ("" if none). previous_ref is worked out here from the events, never read
+// from them, and advances for every signed event whether or not its signature
+// verifies. traceID is asked for only when there is a signed event. visit may
+// be nil.
+func walkSignedConfirmations(events []any, mandateHash string, traceID func() (string, error),
+	visit func(i int, ev, payload map[string]any, body []byte, ref string) error) (string, error) {
+	previous, id := "", ""
+	for i, e := range events {
+		ev, _ := e.(map[string]any)
+		pl, _ := ev["payload"].(map[string]any)
+		if ev["type"] != "human_confirmation" || pl == nil {
+			continue
+		}
+		if _, signed := pl["principal_signature"]; !signed {
+			continue
+		}
+		if id == "" {
+			var err error
+			if id, err = traceID(); err != nil {
+				return "", err
+			}
+		}
+		body, err := confirmationBytes(mandateHash, id, previous, pl)
+		if err != nil {
+			return "", err
+		}
+		previous = ConfirmationRef(body)
+		if visit != nil {
+			if err := visit(i, ev, pl, body, previous); err != nil {
+				return "", err
+			}
+		}
+	}
+	return previous, nil
+}
+
 // ConfirmationPayload is what the principal signs to confirm: the canonical
 // JSON of the trace's mandate_hash and trace_id, the confirmation_ref of the
 // latest signed human_confirmation already in the trace's events (or "" if
@@ -188,22 +228,10 @@ func ConfirmationPayload(trace map[string]any, payload map[string]any) ([]byte, 
 			return nil, fmt.Errorf("witness: a signed confirmation needs %s", name)
 		}
 	}
-	previous := ""
 	events, _ := trace["events"].([]any)
-	for _, e := range events {
-		ev, _ := e.(map[string]any)
-		p, _ := ev["payload"].(map[string]any)
-		if ev["type"] != "human_confirmation" || p == nil {
-			continue
-		}
-		if _, signed := p["principal_signature"]; !signed {
-			continue
-		}
-		b, err := confirmationBytes(mandateHash, traceID, previous, p)
-		if err != nil {
-			return nil, err
-		}
-		previous = ConfirmationRef(b)
+	previous, err := walkSignedConfirmations(events, mandateHash, func() (string, error) { return traceID, nil }, nil)
+	if err != nil {
+		return nil, err
 	}
 	return confirmationBytes(mandateHash, traceID, previous, payload)
 }
@@ -249,6 +277,16 @@ func AppendSignedConfirmation(trace, event, sig map[string]any) error {
 	if _, err := ConfirmationPayload(trace, payload); err != nil {
 		return err
 	}
-	payload["principal_signature"] = sig
-	return AppendEvent(trace, event)
+	// Work on copies, so that a refusal by AppendEvent leaves the caller's event as it was.
+	staged := maps.Clone(event)
+	stagedPayload := maps.Clone(payload)
+	stagedPayload["principal_signature"] = sig
+	staged["payload"] = stagedPayload
+	if err := AppendEvent(trace, staged); err != nil {
+		return err
+	}
+	maps.Copy(event, staged)
+	events := trace["events"].([]any)
+	events[len(events)-1] = event
+	return nil
 }

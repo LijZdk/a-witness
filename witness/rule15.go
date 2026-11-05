@@ -229,39 +229,17 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 	events, _ := traceDoc["events"].([]any)
 	ref, _ := traceDoc["mandate_ref"].(map[string]any)
 	mandateHash, _ := ref["mandate_hash"].(string)
-	var traceID string
-	previous := "" // the confirmation_ref of the latest signed confirmation before this one
-	for i, e := range events {
-		ev, _ := e.(map[string]any)
-		pl, _ := ev["payload"].(map[string]any)
-		if ev["type"] != "human_confirmation" || pl == nil {
-			continue
-		}
-		rawSig, has := pl["principal_signature"]
-		if !has {
-			continue
-		}
+	traceID := func() (string, error) { return field[string](traceDoc, "trace_id", "trace") }
+	_, err = walkSignedConfirmations(events, mandateHash, traceID, func(i int, ev, pl map[string]any, cp []byte, confirmationRef string) error {
 		where := fmt.Sprintf("trace.events[%d].payload.principal_signature", i)
-		sigObj, ok := rawSig.(map[string]any)
+		sigObj, ok := pl["principal_signature"].(map[string]any)
 		if !ok {
-			return nil, false, nil, fmt.Errorf("witness: %s: expected an object", where)
+			return fmt.Errorf("witness: %s: expected an object", where)
 		}
 		csig, err := readSignature(sigObj, where)
 		if err != nil {
-			return nil, false, nil, err
+			return err
 		}
-		if traceID == "" {
-			if traceID, err = field[string](traceDoc, "trace_id", "trace"); err != nil {
-				return nil, false, nil, err
-			}
-		}
-		cp, err := confirmationBytes(mandateHash, traceID, previous, pl)
-		if err != nil {
-			return nil, false, nil, err
-		}
-		confirmationRef := ConfirmationRef(cp)
-		previous = confirmationRef // advanced for every signed event, verified or not
-
 		label := fmt.Sprintf("event %d (human_confirmation)", i)
 		refused := false
 		if actor, _ := ev["actor"].(string); actor != "principal" {
@@ -275,15 +253,19 @@ func signatureProblems(ctx context.Context, mandate, traceDoc map[string]any, t 
 			}
 		}
 		if refused {
-			continue
+			return nil
 		}
 		if csig.keyID != p {
 			addAt(i, "%s: principal_signature uses key '%s', but the mandate was signed with '%s'", label, esc(csig.keyID), esc(p))
-			continue
+			return nil
 		}
 		if verifiesAt(i, csig, label+": principal_signature", ConfirmationTyp, cp, principalKey) {
 			signed[i] = confirmationRef
 		}
+		return nil
+	})
+	if err != nil {
+		return nil, false, nil, err
 	}
 	return problems, principalSigned, signed, nil
 }
