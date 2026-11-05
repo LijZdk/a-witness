@@ -116,4 +116,57 @@ expect_fail "unreadable file is reported" "not valid JSON" "$M" "$TMP/garbage.js
 "$PY" -c 'import sys; open(sys.argv[1], "w").write("[" * 1001 + "]" * 1001)' "$TMP/too-deep.json"
 expect_fail "a document nested 1,001 levels deep is refused, not crashed on" "nested deeper than 1000 levels" "$M" "$TMP/too-deep.json"
 
+echo "== documents at the depth limit"
+# Exactly 1,000 levels in total: the trace is 1 level, events 2, an event 3, its payload 4, so 996 more.
+"$PY" - "$T" "$TMP" <<'EOF'
+import json, sys
+sys.path.insert(0, "scripts")
+import hashlib
+from chain import canon, event_hash
+src, out = sys.argv[1], sys.argv[2]
+DEEP = "[" * 996 + "]" * 996
+t = json.load(open(src))
+t["events"][2]["payload"]["deep"] = "@@"
+prev = t["mandate_ref"]["mandate_hash"]
+for i, ev in enumerate(t["events"]):
+    ev["prev_hash"] = prev
+    if i == 2:
+        # rfc8785 cannot canonicalise this depth, so hash with a placeholder and splice in the deep
+        # array, which is its own canonical form.
+        ev["payload"]["deep"] = "@@"
+        text = canon({k: v for k, v in ev.items() if k != "hash"}).decode().replace('"@@"', DEEP)
+        ev["hash"] = "sha256:" + hashlib.sha256(text.encode()).hexdigest()
+    else:
+        ev["hash"] = event_hash(ev)
+    prev = ev["hash"]
+t["seal"]["final_event_hash"] = prev
+open(f"{out}/depth-1000.json", "w").write(json.dumps(t).replace('"@@"', DEEP))
+open(f"{out}/exactly-1000.json", "w").write("[" * 1000 + "]" * 1000)
+EOF
+code=0
+out="$("$PY" scripts/validate.py "$M" "$TMP/depth-1000.json" 2>&1)" || code=$?
+if [[ "$out" == *Traceback* || $code -gt 1 ]]; then echo "not ok  a 1,000-level document crashed the validator (exit $code)"; echo "$out"; exit 1; fi
+echo "ok      a document exactly 1,000 levels deep does not crash (exit $code: ${out%%$'\n'*})"
+
+"$PY" - "$TMP/exactly-1000.json" <<'EOF'
+import sys
+sys.path.insert(0, "scripts")
+import validate
+validate.load(sys.argv[1])  # raises Unreadable if the scan refuses it
+assert validate.too_deep("[" * 1001 + "]" * 1001) and not validate.too_deep("[" * 1000 + "]" * 1000)
+print("ok      loading accepts exactly 1,000 levels and refuses 1,001")
+EOF
+
+# A mandate whose signature header decodes to a 5,000,000-level array: json.loads in jws.verify recurses.
+"$PY" - "$M" "$TMP/deep-header-mandate.json" <<'EOF'
+import base64, json, sys
+m = json.load(open(sys.argv[1]))
+header = base64.urlsafe_b64encode(b"[" * 5_000_000).rstrip(b"=").decode()
+m["signature"]["value"] = header + ".." + m["signature"]["value"].split("..")[1]
+json.dump(m, open(sys.argv[2], "w"))
+EOF
+out="$("$PY" scripts/validate.py "$TMP/deep-header-mandate.json" "$T" "${KEYS[@]}" 2>&1)" && code=0 || code=$?
+if [[ $code -ne 1 || "$out" != FAIL* || "$out" == *Traceback* ]]; then echo "not ok  a deeply nested JWS header (exit $code)"; echo "$out" | tail -5; exit 1; fi
+echo "ok      a deeply nested JWS header is a clean FAIL"
+
 echo "all checks passed"

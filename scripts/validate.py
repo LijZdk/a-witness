@@ -265,7 +265,7 @@ def signature_problems(mandate, trace, keys):
 USAGE = "usage: python scripts/validate.py <name>.mandate.json <name>.trace.json [--keys <keys>.jwks.json]"
 
 
-def main(argv):
+def run(argv):
     keys_path = None
     if len(argv) == 4 and argv[2] == "--keys":
         keys_path = argv[3]
@@ -305,6 +305,15 @@ def main(argv):
     signatures = "signatures valid" if keys is not None else "signatures NOT checked (no --keys)"
     print(f"PASS  {name}: schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}")
     return 0
+
+
+def main(argv):
+    """run(), except that a document nested so deeply that some library recurses past Python's
+    limit (schema validation, canonicalisation, a JWS header, the key file) is a clean FAIL."""
+    try:
+        return run(argv)
+    except RecursionError:
+        return fail(["the document is nested too deeply to check"])
 
 
 if __name__ == "__main__":
