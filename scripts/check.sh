@@ -331,6 +331,26 @@ rechain(t)
 dump("agent-is-signer.trace", seal(t, AGENT, PROVIDER))
 keyfile("agent-alias.jwks", ("sam", ALIAS), base="agent")
 keyfile("principal-with-agent.jwks", ("home-helper", KEY_IDS["home-helper"]), base="principal")
+
+# Document strings reach every message escaped, not only rule 15's.
+t = copy.deepcopy(trace)
+t["events"][4]["payload"]["quote_id"] = "q\nPASS  forged"
+rechain(t)
+dump("forged-quote-id", t)
+# C1, bidirectional and C0 characters in a key id (the Go test reads the same golden file).
+KINDS = "a" + chr(0x85) + "b" + chr(0x202E) + "c" + chr(0x2066) + "d" + chr(0x200F) + "e\x01"
+dump("esc-kinds-key-id", variant(AGENT, ("newco", "provider", KINDS)))
+# A lone surrogate (a JSON escape for U+D800) in a key id, and a file that is not UTF-8.
+t = variant(AGENT, PROVIDER)
+t["seal"]["signatures"][1]["key_id"] = "k" + chr(0xD800) + "x"  # cannot be signed: set after
+dump("lone-surrogate", t)
+open(f"{out}/not-utf8.json", "wb").write(b'{"spec_version": "0.1", "x": "\xff\xfe"}')
+# A mandate that repeats agent.public_key_ref: the first names a key the verifier never sees.
+text = open(mandate_path).read()
+ref = '"public_key_ref": "' + KEY_IDS["home-helper"] + '"'
+assert text.count(ref) == 1
+open(f"{out}/duplicate-key.mandate.json", "w").write(
+    text.replace(ref, '"public_key_ref": "https://evil.example/j.json#x",\n      ' + ref))
 EOF
 AGENT_KEY="https://agent.example/.well-known/jwks.json#home-helper"  # the key the mandate names
 # The attack this closes: rewrite what was committed, re-hash, seal with the agent's key alone.
@@ -412,6 +432,25 @@ if grep -q '^PASS' <<<"$out" || [[ "$(wc -l <<<"$out")" -ne 3 ]]; then
   echo "not ok  a forged PASS line got into the report"; echo "$out"; exit 1
 fi
 echo "ok      the report has no line a key id could forge"
+
+# Document strings are escaped in every message, not only rule 15's: a quote id holding a line break and a
+# forged PASS line stays on one line. The Go tests read the same golden files.
+expect_line "a quote id with a forged PASS line is printed escaped, byte for byte as Go does" \
+  "$(cat testdata/golden/rule8.forged-quote-id.txt)" "$M" "$TMP/forged-quote-id.json" "${SKIP[@]}"
+out="$("$PY" scripts/validate.py "$M" "$TMP/forged-quote-id.json" "${SKIP[@]}" 2>&1)" || true
+if grep -q '^PASS' <<<"$out" || [[ "$(wc -l <<<"$out")" -ne 2 ]]; then
+  echo "not ok  a forged PASS line got into the report"; echo "$out"; exit 1
+fi
+echo "ok      no quote id can forge a line of the report"
+expect_line "C1, bidirectional and C0 characters in a key id are escaped, byte for byte as Go does" \
+  "$(cat testdata/golden/rule15.esc-kinds.txt)" "$M" "$TMP/esc-kinds-key-id.json" "${KEYS[@]}"
+expect_fail "a lone surrogate is a clean FAIL, not a traceback" "the record is malformed" "$M" "$TMP/lone-surrogate.json" "${KEYS[@]}"
+expect_fail "a lone surrogate is named, not printed" "holds a lone surrogate" "$M" "$TMP/lone-surrogate.json" "${KEYS[@]}"
+expect_fail "a file that is not UTF-8 is a clean FAIL, not a traceback" "not valid UTF-8" "$M" "$TMP/not-utf8.json" "${KEYS[@]}"
+expect_fail "a duplicate object key is refused, as the Go verifier does" \
+  "duplicate object key 'public_key_ref'" "$TMP/duplicate-key.mandate.json" "$T" "${KEYS[@]}"
+expect_fail "a duplicate object key makes the record malformed, never a PASS" \
+  "the record is malformed" "$TMP/duplicate-key.mandate.json" "$T" "${KEYS[@]}"
 
 # expect_usage <label> <validate.py args...>: exit 2 and a usage message, with nothing checked.
 expect_usage() {

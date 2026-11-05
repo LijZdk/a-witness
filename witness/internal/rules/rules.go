@@ -17,6 +17,8 @@ import (
 	"fmt"
 	"slices"
 	"time"
+
+	"github.com/LijZdk/a-witness/witness/internal/text"
 )
 
 // Finding is one way the journey breaks, or deserves a note about, a rule.
@@ -235,11 +237,11 @@ func checkConfirmation(setting string, events []event, principalSigned bool) ([]
 			case !pending:
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
 					"event %d (action_executed): the agent committed %s %s without an approved human_confirmation from the principal, but the mandate requires one every time",
-					ev.seq, value, currency)})
+					ev.seq, text.Esc(value), text.Esc(currency))})
 			case quote != approvedQuote:
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
 					"event %d (action_executed): the agent committed %s %s on quote '%s', but the principal approved quote '%s'",
-					ev.seq, value, currency, quote, approvedQuote)})
+					ev.seq, text.Esc(value), text.Esc(currency), text.Esc(quote), text.Esc(approvedQuote))})
 			}
 			pending = false // each approval is used up by one action
 		}
@@ -278,10 +280,10 @@ func checkScope(scope, trace map[string]any, events []event) ([]Finding, []NotCh
 
 	var findings []Finding
 	if !slices.Contains(classes, class) {
-		findings = append(findings, Finding{10, -1, fmt.Sprintf("journey.product_class '%s' is not in the mandate's scope.product_classes", class)})
+		findings = append(findings, Finding{10, -1, fmt.Sprintf("journey.product_class '%s' is not in the mandate's scope.product_classes", text.Esc(class))})
 	}
 	if !slices.Contains(actions, action) {
-		findings = append(findings, Finding{10, -1, fmt.Sprintf("journey.action '%s' is not in the mandate's scope.allowed_actions", action)})
+		findings = append(findings, Finding{10, -1, fmt.Sprintf("journey.action '%s' is not in the mandate's scope.allowed_actions", text.Esc(action))})
 	}
 	if !slices.ContainsFunc(actions, func(a string) bool { return slices.Contains(binding, a) }) {
 		for _, ev := range events {
@@ -329,9 +331,9 @@ func checkWindow(validity map[string]any, events []event) ([]Finding, error) {
 	for _, ev := range events {
 		switch {
 		case ev.at.Before(from):
-			findings = append(findings, Finding{11, ev.seq, fmt.Sprintf("event %d: happened before the mandate's not_before (%s)", ev.seq, fromText)})
+			findings = append(findings, Finding{11, ev.seq, fmt.Sprintf("event %d: happened before the mandate's not_before (%s)", ev.seq, text.Esc(fromText))})
 		case ev.at.After(to):
-			findings = append(findings, Finding{11, ev.seq, fmt.Sprintf("event %d: happened after the mandate's expires_at (%s)", ev.seq, toText)})
+			findings = append(findings, Finding{11, ev.seq, fmt.Sprintf("event %d: happened after the mandate's expires_at (%s)", ev.seq, text.Esc(toText))})
 		}
 	}
 	return findings, nil

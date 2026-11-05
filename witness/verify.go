@@ -131,7 +131,7 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 	for _, outcome := range t.evidenceOrder {
 		for _, seq := range t.evidence[outcome] {
 			if seq >= len(t.events) {
-				add(7, -1, "outcome_evidence.%s cites event %d, but the trace has only %d events", outcome, seq, len(t.events))
+				add(7, -1, "outcome_evidence.%s cites event %d, but the trace has only %d events", esc(outcome), seq, len(t.events))
 			}
 		}
 	}
@@ -142,7 +142,7 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 		if ev.typ == "quote_received" {
 			id := ev.quoteIDs[0]
 			if first, dup := received[id]; dup {
-				add(8, i, "event %d (quote_received): quote_id '%s' was already used by event %d", i, id, first)
+				add(8, i, "event %d (quote_received): quote_id '%s' was already used by event %d", i, esc(id), first)
 			} else {
 				received[id] = i
 			}
@@ -150,7 +150,7 @@ func verify(ctx context.Context, mandate, traceDoc map[string]any, trust *Trust)
 		}
 		for _, id := range ev.quoteIDs {
 			if _, ok := received[id]; !ok {
-				add(8, i, "event %d (%s): refers to quote '%s', but no earlier quote_received offered it", i, ev.typ, id)
+				add(8, i, "event %d (%s): refers to quote '%s', but no earlier quote_received offered it", i, esc(ev.typ), esc(id))
 			}
 		}
 	}

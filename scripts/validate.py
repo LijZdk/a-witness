@@ -15,7 +15,8 @@ Checks, in order:
      role: the mandate is signed with a principal key; the agent the mandate
      names signed the seal with exactly the key it names; a provider signed
      the seal with a provider key; with --require-principal-seal, the
-     principal did too. A key id trusted for one role is refused for another.
+     principal did too. The role files must be disjoint: see signature_problems
+     for exactly which cross-role overlaps are caught.
   9. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
 
@@ -40,6 +41,7 @@ Exit codes: 0 pass, 1 fail, 2 bad usage.
 """
 import argparse
 import json
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -90,18 +92,56 @@ def too_deep(text):
     return False
 
 
+def _refuse_duplicates(pairs):
+    """Like the Go verifier (witness/canon), refuse an object that repeats a key."""
+    seen = set()
+    for name, _ in pairs:
+        if name in seen:
+            raise ValueError(f"duplicate object key '{esc(name)}'")
+        seen.add(name)
+    return dict(pairs)
+
+
+SURROGATE = re.compile("[" + chr(0xD800) + "-" + chr(0xDFFF) + "]")
+
+
+def has_lone_surrogate(doc):
+    """True if any string or object key in doc holds a surrogate (from a \\ud800 escape): the
+    Go verifier refuses these too. Iterative, so depth cannot recurse."""
+    stack = [doc]
+    while stack:
+        v = stack.pop()
+        if isinstance(v, str):
+            if SURROGATE.search(v):
+                return True
+        elif isinstance(v, list):
+            stack.extend(v)
+        elif isinstance(v, dict):
+            stack.extend(v.keys())
+            stack.extend(v.values())
+    return False
+
+
 def load(path):
+    shown = esc(str(path))
     try:
-        text = Path(path).read_text()
+        text = Path(path).read_text(encoding="utf-8")
         if too_deep(text):
-            raise Unreadable(f"{path}: nested deeper than {MAX_DEPTH} levels")
-        return json.loads(text)
+            raise Unreadable(f"{shown}: nested deeper than {MAX_DEPTH} levels")
+        doc = json.loads(text, object_pairs_hook=_refuse_duplicates)
+        if has_lone_surrogate(doc):
+            raise Unreadable(f"{shown}: holds a lone surrogate, which is not valid text")
+        return doc
     except OSError as e:
-        raise Unreadable(f"{path}: cannot read ({e.strerror})")
+        raise Unreadable(f"{shown}: cannot read ({e.strerror})")
+    except UnicodeDecodeError:
+        raise Unreadable(f"{shown}: not valid UTF-8")
     except json.JSONDecodeError as e:
-        raise Unreadable(f"{path}: not valid JSON ({e})")
+        raise Unreadable(f"{shown}: not valid JSON ({e})")
+    except ValueError as e:
+        raise Unreadable(f"{shown}: {e}")
     except RecursionError:
-        raise Unreadable(f"{path}: nested too deeply to read")
+        raise Unreadable(f"{shown}: nested too deeply to read")
 
 
 def describe(error):
@@ -114,7 +154,7 @@ def describe(error):
 
 def schema_errors(doc, schema_name):
     v = Draft202012Validator(SCHEMAS[schema_name], registry=REGISTRY, format_checker=FormatChecker())
-    return [f"{'/'.join(map(str, e.absolute_path)) or '<root>'}: {describe(e)}"
+    return [f"{esc('/'.join(map(str, e.absolute_path))) or '<root>'}: {esc(describe(e))}"
             for e in sorted(v.iter_errors(doc), key=lambda e: list(map(str, e.absolute_path)))]
 
 
@@ -154,7 +194,7 @@ def time_problems(trace):
         times = [parse_time(ev["at"]) for ev in trace["events"]]
         sealed_at = parse_time(trace["seal"]["sealed_at"])
     except ValueError as e:
-        return [f"unreadable timestamp: {e}"]
+        return [f"unreadable timestamp: {esc(str(e))}"]
     for i in range(1, len(times)):
         if times[i] < times[i - 1]:
             problems.append(f"event {i}: timestamp is earlier than event {i - 1}")
@@ -169,7 +209,7 @@ def evidence_problems(trace):
     for outcome, ref in trace.get("outcome_evidence", {}).items():
         for seq in ref["event_seqs"]:
             if seq >= count:
-                problems.append(f"outcome_evidence.{outcome} cites event {seq}, but the trace has only {count} events")
+                problems.append(f"outcome_evidence.{esc(outcome)} cites event {seq}, but the trace has only {count} events")
     return problems
 
 
@@ -196,12 +236,12 @@ def reference_problems(trace):
         if kind == "quote_received":
             qid = ev["payload"]["quote_id"]
             if qid in received:
-                problems.append(f"event {seq} (quote_received): quote_id '{qid}' was already used by event {received[qid]}")
+                problems.append(f"event {seq} (quote_received): quote_id '{esc(qid)}' was already used by event {received[qid]}")
             else:
                 received[qid] = seq
         for qid in quote_refs(ev):
             if qid not in received:
-                problems.append(f"event {seq} ({kind}): refers to quote '{qid}', but no earlier quote_received offered it")
+                problems.append(f"event {seq} ({esc(kind)}): refers to quote '{esc(qid)}', but no earlier quote_received offered it")
     return problems
 
 
@@ -237,7 +277,7 @@ def confirmation_problems(mandate, trace):
                 approved_quote = None
         elif kind == "action_executed":
             amount = payload["amount_committed"]
-            committed = f"{amount['amount']} {amount['currency']}"
+            committed = f"{esc(amount['amount'])} {esc(amount['currency'])}"
             if approved_quote is None:
                 problems.append(
                     f"event {ev['seq']} (action_executed): the agent committed {committed} "
@@ -246,25 +286,32 @@ def confirmation_problems(mandate, trace):
             elif payload["quote_id"] != approved_quote:
                 problems.append(
                     f"event {ev['seq']} (action_executed): the agent committed {committed} "
-                    f"on quote '{payload['quote_id']}', but the principal approved quote '{approved_quote}'"
+                    f"on quote '{esc(payload['quote_id'])}', but the principal approved quote '{esc(approved_quote)}'"
                 )
             approved_quote = None
     return problems
 
 
 def fail(problems, headline=""):
-    print(f"FAIL  {headline}" if headline else "FAIL")
+    print(f"FAIL  {esc(headline)}" if headline else "FAIL")
     for p in problems:
-        print("  -", p)
+        print("  -", esc(p))
     return 1
+
+
+def _must_escape(o):
+    return (o < 0x20 or 0x7F <= o <= 0x9F or o in (0x2028, 0x2029, 0x200E, 0x200F)
+            or 0x202A <= o <= 0x202E or 0x2066 <= o <= 0x2069 or 0xD800 <= o <= 0xDFFF)
 
 
 def esc(s):
     """A document-supplied string, safe to print inside a message: plain printable text is kept;
-    control characters (C0, DEL, C1) and U+2028/U+2029 become \\uXXXX (lower case hex).
-    witness/rule15.go does the same, so Go and Python print the same bytes."""
-    return "".join(f"\\u{ord(c):04x}" if ord(c) < 0x20 or 0x7F <= ord(c) <= 0x9F or ord(c) in (0x2028, 0x2029) else c
-                   for c in s)
+    these become \\uXXXX (lower case hex): control characters (C0, DEL, C1), U+2028 and U+2029,
+    the bidirectional controls U+200E, U+200F, U+202A-U+202E and U+2066-U+2069, and lone
+    surrogates (U+D800-U+DFFF, which Go strings cannot hold).
+    witness/internal/text (Go, Esc) does the same, so both print the same bytes. Escaping twice
+    changes nothing, because a backslash is kept as it is."""
+    return "".join(f"\\u{ord(c):04x}" if _must_escape(ord(c)) else c for c in s)
 
 
 def spki(key):
@@ -276,10 +323,12 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
     """SPEC.md rule 15, in the order the Go verifier (witness/rule15.go) checks it.
 
     principal, provider and agent map key ids to public keys: the keys trusted for
-    each role. A key id trusted for one role is refused for another; key bytes are
-    compared only between the mandate signer, the agent and a provider signature.
-    The same public key listed under different ids in two role files is not
-    detected, so keep the role files disjoint. The agent's keys are consulted only for the key the mandate names, and
+    each role. Checked against the principal and provider files: the mandate
+    signer's key id, the mandate's agent.public_key_ref and each provider
+    signature's key id. Key material is compared between the mandate signer, the
+    agent key and each provider signature. Not checked: a key id listed in the
+    agent file against the provider file, or the same key or key id listed in two
+    role files in any other way. Keep the role files disjoint. The agent's keys are consulted only for the key the mandate names, and
     only once the principal's signature on the mandate has verified.
 
     1. The mandate signature's key is a principal key, not also a provider key, and verifies.
@@ -420,7 +469,7 @@ def run(argv):
     try:
         mandate, trace = load(mandate_path), load(trace_path)
     except Unreadable as e:
-        return fail([str(e)])
+        return fail([str(e)], "the record is malformed")
     keys = {}
     if not args.skip_signatures:
         for dest, flag in KEY_FLAGS:
@@ -455,7 +504,7 @@ def run(argv):
     summary = f"schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}"
     if args.skip_signatures:
         return fail([summary], f"{name}: signatures were not checked (--skip-signatures), so this is not a pass")
-    print(f"PASS  {name}: {summary}")
+    print(f"PASS  {esc(name)}: {summary}")
     return 0
 
 

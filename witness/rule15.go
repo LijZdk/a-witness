@@ -5,8 +5,8 @@ import (
 	"crypto"
 	"errors"
 	"fmt"
-	"strings"
 
+	"github.com/LijZdk/a-witness/witness/internal/text"
 	"github.com/LijZdk/a-witness/witness/sign"
 )
 
@@ -31,7 +31,8 @@ const (
 //     trust, and that is not the key that signed the mandate.
 //  4. Each seal signature is checked for its role: the agent's uses exactly
 //     the mandate's key; the provider's uses a key trusted for the provider
-//     (and for no other role); the principal's uses the key that signed the
+//     (not also trusted for the principal, and not the agent's or the mandate
+//     signer's key material); the principal's uses the key that signed the
 //     mandate; any other signer is refused.
 //  5. The signers a seal cannot do without are present and valid: the agent,
 //     a provider, and the principal when Trust.RequirePrincipalSeal is set.
@@ -234,18 +235,5 @@ func sameKey(a, b crypto.PublicKey) bool {
 	return ok && b != nil && e.Equal(b)
 }
 
-// esc makes a document-supplied string safe to print inside a message: plain
-// printable text is kept as it is; control characters (C0, DEL, C1) and the
-// line and paragraph separators U+2028 and U+2029 become \uXXXX (lower case
-// hex). scripts/validate.py does the same, so the two print the same bytes.
-func esc(s string) string {
-	var b strings.Builder
-	for _, r := range s {
-		if r < 0x20 || (r >= 0x7f && r <= 0x9f) || r == 0x2028 || r == 0x2029 {
-			fmt.Fprintf(&b, "\\u%04x", r)
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return b.String()
-}
+// esc prints a string from a document safely; see text.Esc.
+var esc = text.Esc

@@ -501,3 +501,43 @@ func TestControlCharactersInKeyIDsAreEscaped(t *testing.T) {
 		}
 	}
 }
+
+// A quote id holding a line break and a forged PASS line is printed escaped, in
+// every message, not just rule 15's. scripts/check.sh compares validate.py's
+// line with the same golden file.
+func TestForgedQuoteIDIsEscaped(t *testing.T) {
+	mandate, _ := exampleMandateAndTrace(t)
+	trace := edit(t, home, true, func(_ map[string]any, e []any) {
+		payload(e, 4)["quote_id"] = "q\nPASS  forged"
+	})
+	problems, err := Verify(context.Background(), mandate, trace, SkipSignatures)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, p := range problems {
+		got = append(got, p.Message)
+		if strings.ContainsAny(p.Message, "\n\r") {
+			t.Errorf("a message holds a line break: %q", p.Message)
+		}
+	}
+	if !slices.Contains(got, golden(t, "rule8.forged-quote-id.txt")) {
+		t.Fatalf("got %q, want the golden line", got)
+	}
+}
+
+// C1, bidirectional and C0 characters in a key id are escaped. scripts/check.sh compares
+// validate.py's line with the same golden file.
+func TestEscapedKindsInKeyIDs(t *testing.T) {
+	kinds := "a" + string(rune(0x85)) + "b" + string(rune(0x202e)) + "c" + string(rune(0x2066)) + "d" + string(rune(0x200f)) + "e\x01"
+	mandate, trace := exampleMandateAndTrace(t)
+	doc := parse(t, reseal(t, trace, exampleSigner("home-helper", "agent"), exampleSigner("newco", "provider")))
+	doc["seal"].(map[string]any)["signatures"].([]any)[1].(map[string]any)["key_id"] = kinds
+	forged, err := canon.Serialize(doc)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := sigProblems(t, mandate, forged, exampleTrust(t)); !slices.Contains(got, golden(t, "rule15.esc-kinds.txt")) {
+		t.Fatalf("got %q, want the golden line", got)
+	}
+}

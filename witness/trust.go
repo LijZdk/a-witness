@@ -7,10 +7,13 @@ import (
 )
 
 // Trust says which keys a verifier trusts, role by role (SPEC.md, "Keys").
-// A key id trusted for one role is refused for another, and the keys of the
-// mandate signer, the agent and a provider signature are compared with each
-// other. The same public key listed under different key ids in two role sets
-// is not detected, so keep the role sets disjoint.
+// Rule 15 checks the mandate signer's key id, the mandate's agent.public_key_ref
+// and each provider signature's key id against the Principal and Provider sets
+// (SPEC.md, rule 15), and compares key material between the mandate signer, the
+// agent's key and each provider signature. It does not look at the other keys in
+// the sets: a key id in the Agent set is not checked against the Provider set,
+// and the same key or key id listed in two role sets is not detected, so the
+// verifier must keep the role sets disjoint.
 type Trust struct {
 	// Principal holds the keys trusted for the principal: the mandate
 	// signature, and the seal signature labelled "principal". Required.
