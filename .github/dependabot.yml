@@ -1,0 +1,16 @@
+# Weekly update PRs. Actions are pinned by commit, so Dependabot also keeps
+# the trailing "# vX.Y.Z" comments current.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+  - package-ecosystem: gomod
+    directory: "/"
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: "/"
+    schedule:
+      interval: weekly
