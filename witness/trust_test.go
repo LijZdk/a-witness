@@ -85,6 +85,7 @@ func rebuild(t *testing.T, change func(m map[string]any), signer string, sealers
 	}
 	trace = edit(t, home, true, func(tr map[string]any, _ []any) {
 		tr["mandate_ref"].(map[string]any)["mandate_hash"] = h
+		resignConfirmation(t, tr) // Sam's signature on his yes covers the mandate hash
 	})
 	if mandate, err = canon.Serialize(m); err != nil {
 		t.Fatal(err)

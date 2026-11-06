@@ -242,6 +242,16 @@ def sign_mandate(m, holder):
                       "value": jws.sign(jws.example_key(holder), "EdDSA", kid, jws.MANDATE_TYP, jws.mandate_payload(m))}
 
 
+def resign_confirmation(t):
+    """Sam signs his yes again: the signature covers the mandate hash, which these variants change."""
+    pl = t["events"][9]["payload"]
+    pl.pop("principal_signature", None)
+    body = jws.confirmation_payload(t["trace_id"], t["mandate_ref"]["mandate_hash"], "", pl)
+    kid = KEY_IDS["sam"]
+    pl["principal_signature"] = {"alg": "EdDSA", "key_id": kid,
+                                 "value": jws.sign(jws.example_key("sam"), "EdDSA", kid, jws.CONFIRMATION_TYP, body)}
+
+
 def seal(t, *signers):
     """Replace the seal's signatures with these (holder, role) or (holder, role, key_id) signers."""
     payload = jws.seal_payload(t)
@@ -282,13 +292,15 @@ m = copy.deepcopy(mandate)
 sign_mandate(m, "home-helper")
 dump("mandate-agent-key", m)
 
-# A mandate that names no agent key. Signed by the principal and chained again, so only M5 objects.
+# A mandate that names no agent key. Signed by the principal and chained again, with Sam's yes signed again
+# for the new mandate hash, so only M5 objects.
 m = copy.deepcopy(mandate)
 del m["agent"]["public_key_ref"]
 sign_mandate(m, "sam")
 dump("no-ref.mandate", m)
 t = copy.deepcopy(trace)
 t["mandate_ref"]["mandate_hash"] = mandate_hash(m)
+resign_confirmation(t)
 rechain(t)
 dump("no-ref.trace", seal(t, AGENT, PROVIDER))
 
@@ -327,6 +339,7 @@ sign_mandate(m, "sam")
 dump("agent-is-signer.mandate", m)
 t = copy.deepcopy(trace)
 t["mandate_ref"]["mandate_hash"] = mandate_hash(m)
+resign_confirmation(t)
 rechain(t)
 dump("agent-is-signer.trace", seal(t, AGENT, PROVIDER))
 keyfile("agent-alias.jwks", ("sam", ALIAS), base="agent")
@@ -469,6 +482,376 @@ expect_usage "key files together with --skip-signatures are a usage error" "$M" 
 expect_usage "--require-principal-seal without keys is a usage error" "$M" "$T" --require-principal-seal
 expect_usage "--require-principal-seal with --skip-signatures is a usage error" "$M" "$T" --skip-signatures --require-principal-seal
 expect_usage "the old --keys flag is a usage error" "$M" "$T" --keys examples/keys.principal.jwks.json
+
+echo "== AW-36: the principal signs each human_confirmation, and a verifier can count only those"
+POLICY=(--require-signed-confirmations)
+SAVINGS_M=examples/fixed-rate-savings-switch.mandate.json
+SAVINGS_T=examples/fixed-rate-savings-switch.trace.json
+
+# expect_pass_line <label> <exact line of the report> <validate.py args...>: exit 0, PASS, and the line.
+expect_pass_line() {
+  local label="$1" want="$2"; shift 2
+  local out code=0
+  out="$("$PY" scripts/validate.py "$@" 2>&1)" || code=$?
+  if [[ $code -ne 0 || "$out" != PASS* ]] || ! grep -qxF -- "$want" <<<"$out"; then
+    echo "not ok  $label (exit $code)"; echo "$out"; exit 1
+  fi
+  echo "ok      $label"
+}
+# expect_no_line <label> <text no line of the report may contain> <validate.py args...>
+expect_no_line() {
+  local label="$1" unwanted="$2"; shift 2
+  local out code=0
+  out="$("$PY" scripts/validate.py "$@" 2>&1)" || code=$?
+  if grep -qF -- "$unwanted" <<<"$out"; then
+    echo "not ok  $label (exit $code)"; echo "$out"; exit 1
+  fi
+  echo "ok      $label"
+}
+
+# The Go tests (witness/confirm_test.go) read the same golden files.
+expect_pass_line "the signed example passes under the policy and prints its signed line, word for word as Go does" \
+  "  signed: $(cat testdata/golden/confirmation.signed.txt)" "$M" "$T" "${KEYS[@]}" "${POLICY[@]}"
+expect_no_line "a signed yes is not reported as the agent's claim" \
+  "$(cat testdata/golden/rule9.agents-claim.txt)" "$M" "$T" "${KEYS[@]}"
+expect_pass_line "an unsigned yes still passes without the policy, noted as the agent's claim" \
+  "  note: $(cat testdata/golden/rule9.agents-claim.txt)" "$SAVINGS_M" "$SAVINGS_T" "${KEYS[@]}"
+expect_line "under the policy an unsigned yes does not cover the purchase (F1), word for word as Go does" \
+  "$(cat testdata/golden/rule9.unsigned-under-policy.txt)" "$SAVINGS_M" "$SAVINGS_T" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "the no-confirmation example keeps its rule 9 line under the policy" \
+  "$(cat testdata/golden/no-confirmation.rule9.txt)" \
+  examples/home-insurance-no-confirmation.mandate.json examples/home-insurance-no-confirmation.trace.json "${KEYS[@]}" "${POLICY[@]}"
+out="$("$PY" scripts/validate.py "$M" "$T" --skip-signatures 2>&1)" || true
+if ! grep -qxF -- "  note: $(cat testdata/golden/rule9.agents-claim.txt)" <<<"$out" || grep -q "  signed:" <<<"$out"; then
+  echo "not ok  --skip-signatures leaves a signed yes as the agent's claim"; echo "$out"; exit 1
+fi
+echo "ok      --skip-signatures leaves a signed yes as the agent's claim, and lists no signed confirmation"
+
+# Variants of the home example, each re-chained and re-sealed so that only the confirmation can object.
+"$PY" - "$M" "$T" "$TMP" <<'EOF'
+import copy, json, sys
+sys.path.insert(0, "scripts")
+import jws
+from chain import event_hash, mandate_hash, sha_text
+from make_examples import KEY_IDS, sign_mandate, signature
+
+mandate_path, trace_path, out = sys.argv[1:4]
+mandate, trace = json.load(open(mandate_path)), json.load(open(trace_path))
+CONF = 9
+
+
+def dump(name, doc):
+    json.dump(doc, open(f"{out}/{name}.json", "w"))
+
+
+def rechain(t):
+    prev = t["mandate_ref"]["mandate_hash"]
+    for i, ev in enumerate(t["events"]):
+        ev["seq"] = i
+        ev["prev_hash"] = prev
+        ev["hash"] = event_hash(ev)
+        prev = ev["hash"]
+    t["seal"]["final_event_hash"] = prev
+
+
+def reseal(t):
+    payload = jws.seal_payload(t)
+    t["seal"]["signatures"] = [{"signer": role, **signature(holder, jws.SEAL_TYP, payload)}
+                               for holder, role in (("home-helper", "agent"), ("newco", "provider"))]
+    return t
+
+
+def sign_at(t, idx, holder="sam", key_id=None, typ=jws.CONFIRMATION_TYP):
+    """Sign t's event idx as holder, over the trace as it stands: the events before idx."""
+    pl = t["events"][idx]["payload"]
+    pl.pop("principal_signature", None)
+    previous = ""
+    for e in t["events"][:idx]:
+        if e["type"] == "human_confirmation" and "principal_signature" in e["payload"]:
+            previous = jws.confirmation_ref(jws.confirmation_payload(t["trace_id"], t["mandate_ref"]["mandate_hash"], previous, e["payload"]))
+    body = jws.confirmation_payload(t["trace_id"], t["mandate_ref"]["mandate_hash"], previous, pl)
+    kid = key_id or KEY_IDS[holder]
+    pl["principal_signature"] = {"alg": "EdDSA", "key_id": kid, "value": jws.sign(jws.example_key(holder), "EdDSA", kid, typ, body)}
+
+
+def variant(name, change, base=trace):
+    t = copy.deepcopy(base)
+    change(t)
+    rechain(t)
+    dump(name, reseal(t))
+
+
+def pl(t, idx=CONF):
+    return t["events"][idx]["payload"]
+
+
+# Forged: signed by a key that is not the one that signed the mandate (R3).
+variant("conf-agent-key", lambda t: sign_at(t, CONF, "home-helper"))
+variant("conf-provider-key", lambda t: sign_at(t, CONF, "newco"))
+variant("conf-other-principal", lambda t: sign_at(t, CONF, "jo"))
+# The agent's key under Sam's key id (R4): the id is right, the signature is not.
+variant("conf-relabelled-kid", lambda t: sign_at(t, CONF, "home-helper", key_id=KEY_IDS["sam"]))
+# Sam signed the right bytes, but as a seal signature (R4).
+variant("conf-seal-typ", lambda t: sign_at(t, CONF, typ=jws.SEAL_TYP))
+
+
+def tampered(change):
+    return lambda t: change(pl(t))
+
+
+# What Sam signed is what the verifier sees: change any of it afterwards (R4).
+variant("conf-tampered-summary", tampered(lambda p: p.update(shown_summary_hash=sha_text("Switch to NewCo, for 198 GBP. Approve?"))))
+variant("conf-tampered-quote", tampered(lambda p: p.update(quote_id="q_incumbent")))
+variant("conf-tampered-amount", tampered(lambda p: p["amount"].update(amount="198.00")))
+variant("conf-tampered-decision", tampered(lambda p: p.update(decision="modified")))
+variant("conf-tampered-method", tampered(lambda p: p.update(method="voice")))
+variant("conf-added-aer", tampered(lambda p: p.update(aer="4.35")))
+
+
+# A real signed yes moved into another journey, or under another of Sam's mandates (R4).
+def other_trace(t):
+    real = t["trace_id"]
+    t["trace_id"] = "trc_SomewhereElse1"
+    sign_at(t, CONF)
+    t["trace_id"] = real
+
+
+def other_mandate(t):
+    other = json.load(open("examples/home-insurance-no-confirmation.trace.json"))["mandate_ref"]["mandate_hash"]
+    real = t["mandate_ref"]["mandate_hash"]
+    t["mandate_ref"]["mandate_hash"] = other
+    sign_at(t, CONF)
+    t["mandate_ref"]["mandate_hash"] = real
+
+
+variant("conf-other-trace", other_trace)
+variant("conf-other-mandate", other_mandate)
+
+
+# The same signed yes twice, and a signed yes and decline swapped (R4 on the wrong previous_ref).
+def duplicate(t):
+    t["events"].insert(CONF + 1, copy.deepcopy(t["events"][CONF]))
+
+
+def decline_after(t):
+    duplicate(t)
+    pl(t, CONF + 1)["decision"] = "declined"
+    for i, ev in enumerate(t["events"]):
+        ev["seq"] = i
+    sign_at(t, CONF + 1)
+
+
+def swapped(t):
+    decline_after(t)
+    t["events"][CONF], t["events"][CONF + 1] = t["events"][CONF + 1], t["events"][CONF]
+
+
+variant("conf-duplicate", duplicate)
+variant("conf-swapped", swapped)
+variant("conf-yes-then-decline", decline_after)
+
+
+def unsigned_decline(t):
+    duplicate(t)
+    p = pl(t, CONF + 1)
+    p["decision"] = "declined"
+    del p["principal_signature"]
+
+
+variant("conf-unsigned-decline", unsigned_decline)
+
+# A signed event that lacks what a signed confirmation needs, or whose actor is not the principal (R2, R1).
+variant("conf-no-summary", tampered(lambda p: p.pop("shown_summary_hash")))
+variant("conf-no-quote", tampered(lambda p: p.pop("quote_id")))
+variant("conf-no-amount", tampered(lambda p: p.pop("amount")))
+variant("conf-all-missing", tampered(lambda p: [p.pop(k) for k in ("shown_summary_hash", "quote_id", "amount")]))
+variant("conf-actor", lambda t: t["events"][CONF].update(actor="agent"))
+
+
+# The yes is genuine; what follows is not what it was a yes to (F2, F3, and the existing quote message).
+def committed(amount):
+    return lambda t: t["events"][10]["payload"]["amount_committed"].update(amount=amount)
+
+
+variant("conf-amount-mismatch", committed("198.00"))
+variant("conf-quote-mismatch", lambda t: (pl(t).update(quote_id="q_incumbent"), sign_at(t, CONF)))
+variant("conf-aer-mismatch", lambda t: (pl(t).update(aer="4.35"), sign_at(t, CONF)))
+variant("conf-quote-nowhere", lambda t: (pl(t).update(quote_id="q_nowhere"), sign_at(t, CONF)))
+variant("conf-currency-mismatch", lambda t: t["events"][10]["payload"]["amount_committed"].update(currency="EUR"))
+
+
+# A genuine signed yes must be for the quote the agent selected last: an action on the signed quote after
+# another selection gets its own message (golden rule9.signed-other-quote.txt); any other quote, the usual one.
+def yes_after_other_selection(t):
+    other = copy.deepcopy(t["events"][8])
+    other["payload"]["quote_id"] = "q_incumbent"
+    t["events"].insert(CONF, other)  # the agent selects q_incumbent after choosing q_newco, before Sam's yes
+
+
+def yes_for_unselected(t):
+    pl(t).update(quote_id="q_incumbent")
+    sign_at(t, CONF)
+    t["events"][10]["payload"]["quote_id"] = "q_incumbent"  # bought what Sam signed for, though q_newco was selected
+
+
+def signed_then_unsigned(t):
+    """A signed yes covers the first purchase; an unsigned yes (copy without the signature) is all that
+    stands behind a second selection and purchase."""
+    sel2 = copy.deepcopy(t["events"][8])
+    yes2 = copy.deepcopy(t["events"][CONF])
+    yes2["payload"].pop("principal_signature")
+    act2 = copy.deepcopy(t["events"][10])
+    for e in (sel2, yes2, act2):
+        e["at"] = t["events"][10]["at"]  # keep event times from going backwards
+    t["events"][11:11] = [sel2, yes2, act2]  # after the first action, before the post-sale notice
+
+
+variant("conf-signed-then-unsigned", signed_then_unsigned)
+variant("conf-other-selection", yes_after_other_selection)
+variant("conf-unselected", yes_for_unselected)
+
+
+# R1 and R2 stop R3 and R4 for that event: a wrong key on top changes nothing in the report.
+def actor_and_wrong_key(t):
+    sign_at(t, CONF, "home-helper")
+    t["events"][CONF]["actor"] = "agent"
+
+
+def missing_and_wrong_key(t):
+    sign_at(t, CONF, "home-helper")
+    pl(t).pop("shown_summary_hash")
+
+
+variant("conf-actor-wrongkey", actor_and_wrong_key)
+variant("conf-missing-wrongkey", missing_and_wrong_key)
+
+# The policy cannot apply to a mandate that does not ask for a confirmation (N2).
+m = copy.deepcopy(mandate)
+m["human_confirmation"] = "never"
+sign_mandate(m, "sam")
+dump("never.mandate", m)
+
+
+def never(t):
+    t["mandate_ref"]["mandate_hash"] = mandate_hash(m)
+    sign_at(t, CONF)
+
+
+variant("never.trace", never)
+EOF
+SAMKEY="https://wallet.example/.well-known/jwks.json#prn_a91f0c3e"
+BADSIG="event 9 (human_confirmation): principal_signature does not verify: the signature does not match the document and key"
+
+# Refused for rule 15 whether or not the policy is on: the yes is not genuine.
+for policy in "" "--require-signed-confirmations"; do
+  label="${policy:+under the policy, }"
+  expect_line "${label}a yes signed with the agent's key is refused (R3), word for word as Go does" \
+    "$(cat testdata/golden/rule15.confirm-key.txt)" "$M" "$TMP/conf-agent-key.json" "${KEYS[@]}" $policy
+  expect_line "${label}a yes signed with the provider's key is refused (R3)" \
+    "event 9 (human_confirmation): principal_signature uses key 'https://newco.example/.well-known/jwks.json#seal-2026', but the mandate was signed with '$SAMKEY'" \
+    "$M" "$TMP/conf-provider-key.json" "${KEYS[@]}" $policy
+  expect_line "${label}a yes signed with another principal's key is refused (R3)" \
+    "event 9 (human_confirmation): principal_signature uses key 'https://wallet.example/.well-known/jwks.json#prn_5d2e7b14', but the mandate was signed with '$SAMKEY'" \
+    "$M" "$TMP/conf-other-principal.json" "${KEYS[@]}" $policy
+done
+expect_line "the agent's key under Sam's key id is refused (R4)" "$BADSIG" "$M" "$TMP/conf-relabelled-kid.json" "${KEYS[@]}"
+expect_line "a seal signature over the confirmation bytes is not a confirmation signature (R4)" \
+  "event 9 (human_confirmation): principal_signature does not verify: the JWS header has typ 'a-witness-seal', expected 'a-witness-confirmation'" \
+  "$M" "$TMP/conf-seal-typ.json" "${KEYS[@]}"
+expect_line "a changed summary is refused (R4), word for word as Go does" \
+  "$(cat testdata/golden/rule15.confirm-bad-sig.txt)" "$M" "$TMP/conf-tampered-summary.json" "${KEYS[@]}" "${POLICY[@]}"
+for what in quote amount decision method; do
+  expect_line "a changed $what is refused (R4)" "$BADSIG" "$M" "$TMP/conf-tampered-$what.json" "${KEYS[@]}" "${POLICY[@]}"
+done
+expect_line "an AER added after signing is refused (R4)" "$BADSIG" "$M" "$TMP/conf-added-aer.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a yes signed for another trace_id is refused (R4)" "$BADSIG" "$M" "$TMP/conf-other-trace.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a yes signed for another of Sam's mandates is refused (R4)" "$BADSIG" "$M" "$TMP/conf-other-mandate.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "the same signed yes twice in one trace is refused at the copy (R4)" \
+  "event 10 (human_confirmation): principal_signature does not verify: the signature does not match the document and key" \
+  "$M" "$TMP/conf-duplicate.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a swapped yes and signed decline: the decline, now first, is refused (R4)" "$BADSIG" "$M" "$TMP/conf-swapped.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a swapped yes and signed decline: the yes, now second, is refused (R4)" \
+  "event 10 (human_confirmation): principal_signature does not verify: the signature does not match the document and key" \
+  "$M" "$TMP/conf-swapped.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a signed confirmation without a shown_summary_hash is refused (R2), word for word as Go does" \
+  "$(cat testdata/golden/rule15.confirm-needs-summary.txt)" "$M" "$TMP/conf-no-summary.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a signed confirmation without a quote_id is refused (R2)" \
+  "event 9 (human_confirmation): a signed confirmation needs quote_id" "$M" "$TMP/conf-no-quote.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a signed confirmation without an amount is refused (R2)" \
+  "event 9 (human_confirmation): a signed confirmation needs amount" "$M" "$TMP/conf-no-amount.json" "${KEYS[@]}" "${POLICY[@]}"
+for field in shown_summary_hash quote_id amount; do
+  expect_line "all three missing fields are named: $field (R2)" \
+    "event 9 (human_confirmation): a signed confirmation needs $field" "$M" "$TMP/conf-all-missing.json" "${KEYS[@]}" "${POLICY[@]}"
+done
+expect_line "a signature on an event whose actor is not the principal is refused (R1), word for word as Go does" \
+  "$(cat testdata/golden/rule15.confirm-actor.txt)" "$M" "$TMP/conf-actor.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_fail "a refused yes is a broken record, not a mandate breach" \
+  "the record is broken or has been tampered with" "$M" "$TMP/conf-agent-key.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a yes signed for a quote nobody offered is caught by rule 8" \
+  "event 9 (human_confirmation): refers to quote 'q_nowhere', but no earlier quote_received offered it" \
+  "$M" "$TMP/conf-quote-nowhere.json" "${KEYS[@]}" "${POLICY[@]}"
+
+# A genuine yes, followed by a purchase that is not what it was a yes to.
+expect_line "a purchase for another amount than the one signed is refused (F2), word for word as Go does" \
+  "$(cat testdata/golden/rule9.amount-mismatch.txt)" "$M" "$TMP/conf-amount-mismatch.json" "${KEYS[@]}"
+expect_line "a purchase on another quote than the one signed is refused" \
+  "event 10 (action_executed): the agent committed 298.00 GBP on quote 'q_newco', but the principal approved quote 'q_incumbent'" \
+  "$M" "$TMP/conf-quote-mismatch.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a signed AER the quote did not offer is refused (F3), word for word as Go does" \
+  "$(cat testdata/golden/rule9.aer-mismatch.txt)" "$M" "$TMP/conf-aer-mismatch.json" "${KEYS[@]}"
+expect_line "a purchase in another currency than the one signed is refused (F2)" \
+  "event 10 (action_executed): the agent committed 298.00 EUR, but the principal approved 298.00 GBP" \
+  "$M" "$TMP/conf-currency-mismatch.json" "${KEYS[@]}"
+expect_line "a signed yes given after the agent selected another quote does not cover the purchase" \
+  "$(cat testdata/golden/rule9.signed-other-quote.txt)" \
+  "$M" "$TMP/conf-other-selection.json" "${KEYS[@]}"
+expect_line "a signed yes for a quote the agent did not select does not cover the purchase" \
+  "event 10 (action_executed): the principal signed approval for quote 'q_incumbent', but the agent selected quote 'q_newco'" \
+  "$M" "$TMP/conf-unselected.json" "${KEYS[@]}"
+expect_line "under the policy an unsigned yes behind a second purchase is refused even after a signed one (F1)" \
+  "event 13 (action_executed): the agent committed 298.00 GBP on an approval the principal did not sign, but this verifier counts only approvals the principal signed" \
+  "$M" "$TMP/conf-signed-then-unsigned.json" "${KEYS[@]}" "${POLICY[@]}"
+# expect_report <label> <the whole report> <validate.py args...>: every line, so an extra one is caught.
+expect_report() {
+  local label="$1" want="$2"; shift 2
+  local out code=0
+  out="$("$PY" scripts/validate.py "$@" 2>&1)" || code=$?
+  if [[ $code -ne 1 || "$out" != "$want" ]]; then
+    echo "not ok  $label (exit $code)"; echo "$out"; echo "-- wanted"; echo "$want"; exit 1
+  fi
+  echo "ok      $label"
+}
+BROKEN="the record is broken or has been tampered with"
+expect_report "R1 stops R3 and R4: a wrong key and a wrong actor give the actor line alone" \
+  "FAIL  conf-actor-wrongkey.json: $BROKEN
+  - $(cat testdata/golden/rule15.confirm-actor.txt)" "$M" "$TMP/conf-actor-wrongkey.json" "${KEYS[@]}"
+expect_report "R2 stops R3 and R4: a wrong key and a missing summary give the summary line alone" \
+  "FAIL  conf-missing-wrongkey.json: $BROKEN
+  - $(cat testdata/golden/rule15.confirm-needs-summary.txt)" "$M" "$TMP/conf-missing-wrongkey.json" "${KEYS[@]}"
+expect_report "a mismatch with the signed yes reports its verified confirmation reference" \
+  "FAIL  conf-amount-mismatch.json: the record is intact, but the agent broke its mandate
+  - $(cat testdata/golden/rule9.amount-mismatch.txt)
+  signed: $(cat testdata/golden/confirmation.signed.txt)" "$M" "$TMP/conf-amount-mismatch.json" "${KEYS[@]}"
+expect_line "an unsigned decline still cancels a signed yes" \
+  "event 11 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal, but the mandate requires one every time" \
+  "$M" "$TMP/conf-unsigned-decline.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_line "a signed decline after a signed yes cancels it" \
+  "event 11 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal, but the mandate requires one every time" \
+  "$M" "$TMP/conf-yes-then-decline.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_pass_line "the policy does not apply to a mandate that never asks, and the report says so (N2), word for word as Go does" \
+  "  note: $(cat testdata/golden/rule9.policy-not-applied.txt)" "$TMP/never.mandate.json" "$TMP/never.trace.json" "${KEYS[@]}" "${POLICY[@]}"
+expect_no_line "without the policy there is nothing to say about it" \
+  "only principal-signed approvals count" "$TMP/never.mandate.json" "$TMP/never.trace.json" "${KEYS[@]}"
+# An unsigned yes with a bad signature elsewhere is not looked at when signatures are skipped.
+expect_fail "--skip-signatures does not check a confirmation signature" \
+  "signatures were not checked (--skip-signatures)" "$M" "$TMP/conf-tampered-summary.json" "${SKIP[@]}"
+out="$("$PY" scripts/validate.py "$M" "$TMP/conf-tampered-summary.json" "${SKIP[@]}" 2>&1)" || true
+if grep -q "principal_signature" <<<"$out"; then echo "not ok  --skip-signatures checked a confirmation"; echo "$out"; exit 1; fi
+echo "ok      --skip-signatures reports no confirmation problem"
+
+expect_usage "--require-signed-confirmations with --skip-signatures is a usage error" "$M" "$T" --skip-signatures --require-signed-confirmations
+expect_usage "--require-signed-confirmations without keys is a usage error" "$M" "$T" --require-signed-confirmations
+expect_usage "--require-signed-confirmations with only some keys is a usage error" "$M" "$T" --require-signed-confirmations --principal-keys examples/keys.principal.jwks.json
 
 echo "not json" > "$TMP/garbage.json"
 expect_fail "unreadable file is reported" "not valid JSON" "$M" "$TMP/garbage.json" "${SKIP[@]}"

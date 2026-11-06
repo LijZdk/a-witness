@@ -1,0 +1,1 @@
+event 9 (human_confirmation): a signed confirmation needs shown_summary_hash

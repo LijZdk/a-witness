@@ -17,8 +17,12 @@ Checks, in order:
      the seal with a provider key; with --require-principal-seal, the
      principal did too. The role files must be disjoint: see signature_problems
      for exactly which cross-role overlaps are caught.
+     Each human_confirmation that carries a principal_signature is checked
+     too (see signature_problems, step 6).
   9. Only if the record is intact: the journey obeyed the mandate. So far
      one rule is checked, human confirmation (see confirmation_problems).
+     With --require-signed-confirmations, only approvals the principal
+     signed count.
 
 Checks 1-8 ask "is this record genuine?". Check 9 asks "did the agent do
 what it was allowed to?". The report says which kind of failure it found.
@@ -27,7 +31,7 @@ The other mandate rules (price limits, scope, expiry and so on) arrive with
 the Phase 3 verifier.
 
 Usage:
-  python scripts/validate.py M T --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal]
+  python scripts/validate.py M T --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal] [--require-signed-confirmations]
   python scripts/validate.py M T --skip-signatures
 
 Each F is a plain JWKS file, read from disk, so which keys are trusted for
@@ -218,6 +222,8 @@ def quote_refs(event):
     p, kind = event["payload"], event["type"]
     if kind in ("requirement_check", "selection_made", "action_executed"):
         return [p["quote_id"]]
+    if kind == "human_confirmation" and "quote_id" in p:
+        return [p["quote_id"]]
     if kind == "alternatives_considered":
         return [o["quote_id"] for o in p["options"]]
     if kind in ("escalation", "error") and "related_quote_id" in p:
@@ -245,7 +251,15 @@ def reference_problems(trace):
     return problems
 
 
-def confirmation_problems(mandate, trace):
+NOTE_AGENTS_CLAIM = "the principal's approvals are recorded by the agent; the principal did not sign the seal"
+
+
+def policy_not_applied(setting):
+    return ("the policy that only principal-signed approvals count was not applied, "
+            f"because human_confirmation is '{esc(setting)}'")
+
+
+def confirmation_problems(mandate, trace, signed=None, require=False, seal_signed=False):
     """Every binding action needs its own live yes from the principal, given
     after the agent chose what to buy and for the quote it chose.
 
@@ -256,40 +270,96 @@ def confirmation_problems(mandate, trace):
     a yes to one choice is not a yes to a different one; so does a later
     human_confirmation that is declined or modified.
 
+    signed maps the seq of each human_confirmation whose principal signature
+    verified to its confirmation_ref. A signed yes is for the quote, amount and
+    AER it signed; with require, an unsigned yes does not count at all.
+
     "above_limits" needs the price and scope rules, so it waits for Phase 3.
+
+    Returns (problems, notes). A note says what the check could not establish,
+    as Go's NotChecked does; only the two about the principal's approvals are
+    reported here.
     """
-    if mandate["human_confirmation"] != "always":
-        return []
+    signed = signed or {}
+    setting = mandate["human_confirmation"]
+    if setting != "always":
+        return [], ([policy_not_applied(setting)] if require and setting in ("above_limits", "never") else [])
     problems = []
     selected = None        # quote_id of the latest selection_made
-    approved_quote = None  # the quote a pending approval is for; None if none is pending
+    pending = False        # an approval is waiting to be used by an action
+    ignored = False        # an unsigned approval was set aside, because only signed ones count
+    approved_quote = None
+    approved_signed = False
+    approved_amount = None  # of a signed approval
+    offered = {}           # quote_id -> the AER the quote offered, if it offered one
+    principal_approvals = signed_approvals = 0
     for ev in trace["events"]:
-        kind, payload = ev["type"], ev["payload"]
-        if kind == "selection_made":
+        kind, payload, seq = ev["type"], ev["payload"], ev["seq"]
+        if kind == "quote_received":
+            if "aer" in payload:
+                offered[payload["quote_id"]] = payload["aer"]
+        elif kind == "selection_made":
             selected = payload["quote_id"]
-            approved_quote = None
+            pending = ignored = False
         elif kind == "human_confirmation":
             if payload["decision"] == "approved":
+                is_signed = seq in signed
                 if ev["actor"] == "principal":
-                    # Before any selection_made, selected is None: the yes is for no choice, so no yes is pending.
-                    approved_quote = selected
+                    principal_approvals += 1
+                    signed_approvals += is_signed
+                # Before any selection_made, selected is None: the yes is for no choice, so no yes is pending.
+                if ev["actor"] != "principal" or selected is None:
+                    pass
+                elif is_signed:
+                    quote = payload["quote_id"]
+                    pending, approved_quote, approved_signed, approved_amount = True, quote, True, payload["amount"]
+                    if "aer" in payload and offered.get(quote) != payload["aer"]:
+                        shown = esc(offered[quote]) if quote in offered else "no AER"
+                        problems.append(
+                            f"event {seq} (human_confirmation): the principal approved an AER of {esc(payload['aer'])} "
+                            f"on quote '{esc(quote)}', but that quote offers {shown}"
+                        )
+                elif require:
+                    ignored = True  # pending is left as it was
+                else:
+                    pending, approved_quote, approved_signed = True, selected, False
             else:
-                approved_quote = None
+                pending = ignored = False
         elif kind == "action_executed":
             amount = payload["amount_committed"]
             committed = f"{esc(amount['amount'])} {esc(amount['currency'])}"
-            if approved_quote is None:
+            if not pending and ignored:
                 problems.append(
-                    f"event {ev['seq']} (action_executed): the agent committed {committed} "
+                    f"event {seq} (action_executed): the agent committed {committed} "
+                    f"on an approval the principal did not sign, but this verifier counts only approvals the principal signed"
+                )
+            elif not pending:
+                problems.append(
+                    f"event {seq} (action_executed): the agent committed {committed} "
                     f"without an approved human_confirmation from the principal, but the mandate requires one every time"
                 )
             elif payload["quote_id"] != approved_quote:
                 problems.append(
-                    f"event {ev['seq']} (action_executed): the agent committed {committed} "
+                    f"event {seq} (action_executed): the agent committed {committed} "
                     f"on quote '{esc(payload['quote_id'])}', but the principal approved quote '{esc(approved_quote)}'"
                 )
-            approved_quote = None
-    return problems
+            elif approved_quote != selected:
+                # A signed yes for a quote other than the latest selection does not cover the selected one.
+                problems.append(
+                    f"event {seq} (action_executed): the principal signed approval for quote '{esc(approved_quote)}', "
+                    f"but the agent selected quote '{esc(selected)}'"
+                )
+            if pending and approved_signed and (amount["amount"], amount["currency"]) != (approved_amount["amount"], approved_amount["currency"]):
+                problems.append(
+                    f"event {seq} (action_executed): the agent committed {committed}, "
+                    f"but the principal approved {esc(approved_amount['amount'])} {esc(approved_amount['currency'])}"
+                )
+            pending = ignored = approved_signed = False
+    all_signed = principal_approvals > 0 and signed_approvals == principal_approvals
+    notes = []
+    if not problems and not seal_signed and not require and not all_signed:
+        notes.append(NOTE_AGENTS_CLAIM)
+    return problems, notes
 
 
 def fail(problems, headline=""):
@@ -297,6 +367,16 @@ def fail(problems, headline=""):
     for p in problems:
         print("  -", esc(p))
     return 1
+
+
+def print_notes(notes):
+    for n in notes:
+        print("  note:", esc(n))
+
+
+def print_signed_confirmations(signed):
+    for seq, ref in signed.items():
+        print(f"  signed: event {seq} (human_confirmation): signed by the principal, confirmation_ref {ref}")
 
 
 def _must_escape(o):
@@ -317,6 +397,9 @@ def esc(s):
 def spki(key):
     """A public key's bytes (DER SubjectPublicKeyInfo), to tell whether two key ids name the same key."""
     return key.public_bytes(Encoding.DER, PublicFormat.SubjectPublicKeyInfo)
+
+
+CONFIRMATION_REQUIRED = ("shown_summary_hash", "quote_id", "amount")
 
 
 def signature_problems(mandate, trace, principal, provider, agent, require_principal_seal=False):
@@ -340,6 +423,14 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
        signed the mandate; any other signer is refused.
     5. The seal has a valid agent signature and a valid provider signature, and
        a principal one if require_principal_seal.
+    6. Each human_confirmation that carries a principal_signature, in event order:
+       its actor is the principal; it holds the fields a signed confirmation needs;
+       the signature uses the key that signed the mandate; and it verifies over
+       jws.confirmation_payload. Runs whenever step 2 did not stop.
+
+    Returns (problems, principal_signed, signed): whether the seal carries a valid
+    principal signature, and a dict from the seq of each human_confirmation whose
+    signature verified to its confirmation_ref.
     """
     problems = []
 
@@ -362,7 +453,7 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
         verifies(msig, "mandate signature", jws.MANDATE_TYP, jws.mandate_payload(mandate), principal_key)
     if problems:
         problems.append("seal signatures were not checked, because the mandate signature is not valid")
-        return problems
+        return problems, False, {}
 
     agent_ref = mandate["agent"].get("public_key_ref")
     agent_key = None
@@ -420,7 +511,34 @@ def signature_problems(mandate, trace, principal, provider, agent, require_princ
         problems.append("the seal has no valid signature from a provider")
     if require_principal_seal and not principal_signed:
         problems.append("the seal has no valid signature from the principal who signed the mandate")
-    return problems
+
+    signed = {}
+    previous = ""  # the confirmation_ref of the latest signed confirmation before this one
+    for i, ev in enumerate(trace["events"]):
+        pl = ev["payload"]
+        if ev["type"] != "human_confirmation" or "principal_signature" not in pl:
+            continue
+        csig = pl["principal_signature"]
+        body = jws.confirmation_payload(trace["trace_id"], trace["mandate_ref"]["mandate_hash"], previous, pl)
+        ref = jws.confirmation_ref(body)
+        previous = ref  # advanced for every signed event, verified or not
+        label = f"event {i} (human_confirmation)"
+        refused = False
+        if ev["actor"] != "principal":
+            problems.append(f"{label}: carries the principal's signature, but its actor is '{esc(ev['actor'])}'")
+            refused = True
+        for name in CONFIRMATION_REQUIRED:
+            if name not in pl:
+                problems.append(f"{label}: a signed confirmation needs {name}")
+                refused = True
+        if refused:
+            continue
+        if csig["key_id"] != p:
+            problems.append(f"{label}: principal_signature uses key '{esc(csig['key_id'])}', but the mandate was signed with '{esc(p)}'")
+            continue
+        if verifies(csig, f"{label}: principal_signature", jws.CONFIRMATION_TYP, body, principal_key):
+            signed[i] = ref
+    return problems, principal_signed, signed
 
 
 class Parser(argparse.ArgumentParser):
@@ -432,8 +550,9 @@ class Parser(argparse.ArgumentParser):
 
 USAGE = """usage: python scripts/validate.py <name>.mandate.json <name>.trace.json KEYS
 KEYS is one of:
-  --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal]
-      F is a JWKS file (plain JSON Web Key Set) of the keys trusted for that role
+  --principal-keys F --provider-keys F --agent-keys F [--require-principal-seal] [--require-signed-confirmations]
+      F is a JWKS file (plain JSON Web Key Set) of the keys trusted for that role.
+      --require-signed-confirmations: only approvals the principal signed count (rule 9)
   --skip-signatures
       leave out the signature checks; the result is then never a PASS"""
 
@@ -447,6 +566,7 @@ def parse_args(argv):
     for dest, flag in KEY_FLAGS:
         parser.add_argument(flag, dest=dest)
     parser.add_argument("--require-principal-seal", action="store_true")
+    parser.add_argument("--require-signed-confirmations", action="store_true")
     parser.add_argument("--skip-signatures", action="store_true")
     parser.add_argument("--keys", help=argparse.SUPPRESS)
     args = parser.parse_args(argv)
@@ -454,8 +574,8 @@ def parse_args(argv):
     if args.keys:
         parser.error("--keys is gone: one key file cannot say which key is trusted for which party. "
                      "Give --principal-keys, --provider-keys and --agent-keys, one JWKS file for each role")
-    if args.skip_signatures and (given or args.require_principal_seal):
-        parser.error("--skip-signatures cannot be combined with key files or --require-principal-seal")
+    if args.skip_signatures and (given or args.require_principal_seal or args.require_signed_confirmations):
+        parser.error("--skip-signatures cannot be combined with key files, --require-principal-seal or --require-signed-confirmations")
     if not args.skip_signatures and len(given) != len(KEY_FLAGS):
         parser.error("signatures are checked with all of --principal-keys, --provider-keys and --agent-keys "
                      "(or leave them out explicitly with --skip-signatures)")
@@ -488,23 +608,31 @@ def run(argv):
 
     problems = (chain_problems(mandate, trace) + time_problems(trace)
                 + evidence_problems(trace) + reference_problems(trace))
+    principal_signed, signed = False, {}
     if not args.skip_signatures:
-        problems += signature_problems(mandate, trace, keys["principal_keys"], keys["provider_keys"],
-                                       keys["agent_keys"], args.require_principal_seal)
+        sig_problems, principal_signed, signed = signature_problems(
+            mandate, trace, keys["principal_keys"], keys["provider_keys"], keys["agent_keys"], args.require_principal_seal)
+        problems += sig_problems
     if problems:
         return fail(problems, f"{name}: the record is broken or has been tampered with")
 
-    problems = confirmation_problems(mandate, trace)
+    problems, notes = confirmation_problems(mandate, trace, signed, args.require_signed_confirmations, principal_signed)
     if problems:
-        return fail(problems, f"{name}: the record is intact, but the agent broke its mandate")
+        status = fail(problems, f"{name}: the record is intact, but the agent broke its mandate")
+        print_signed_confirmations(signed)
+        return status
 
     setting = mandate["human_confirmation"]
     confirmation = "confirmation rule met" if setting == "always" else f"confirmation rule not checked for '{setting}' yet"
     signatures = "signatures NOT checked (--skip-signatures)" if args.skip_signatures else "signatures valid"
     summary = f"schema ok, {len(trace['events'])} events chained to mandate, seal covers final event, {signatures}, {confirmation}"
     if args.skip_signatures:
-        return fail([summary], f"{name}: signatures were not checked (--skip-signatures), so this is not a pass")
+        status = fail([summary], f"{name}: signatures were not checked (--skip-signatures), so this is not a pass")
+        print_notes(notes)
+        return status
     print(f"PASS  {esc(name)}: {summary}")
+    print_signed_confirmations(signed)
+    print_notes(notes)
     return 0
 
 

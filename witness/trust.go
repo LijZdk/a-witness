@@ -16,7 +16,8 @@ import (
 // verifier must keep the role sets disjoint.
 type Trust struct {
 	// Principal holds the keys trusted for the principal: the mandate
-	// signature, and the seal signature labelled "principal". Required.
+	// signature, the seal signature labelled "principal", and the
+	// principal_signature on each human_confirmation. Required.
 	Principal sign.Pinned
 	// Provider holds the keys trusted for providers: the seal signature
 	// labelled "provider". Required. Trust only the parties to the journey
@@ -30,6 +31,13 @@ type Trust struct {
 	// RequirePrincipalSeal also requires a valid seal signature from the
 	// principal, made with the key that signed the mandate.
 	RequirePrincipalSeal bool
+	// RequireSignedConfirmations makes rule 9 count only approvals the
+	// principal signed (a human_confirmation with a valid principal_signature,
+	// made with the key that signed the mandate). An unsigned approval stays a
+	// valid record, but no longer covers an action. It is an option of Check;
+	// Verify ignores it, though it reports a bad principal_signature under
+	// rule 15 either way.
+	RequireSignedConfirmations bool
 }
 
 // Principal and Provider are sign.Pinned so that their key source is fixed by
@@ -46,6 +54,7 @@ var SkipSignatures = &Trust{}
 
 var (
 	errNoResolver      = errors.New("witness: no keys to trust; pass a *witness.Trust, or witness.SkipSignatures to check without signatures")
+	errSkipWithRequire = errors.New("witness: SkipSignatures checks no signatures, so it cannot also require a principal seal or signed confirmations; do not change it")
 	errIncompleteTrust = errors.New("witness: Trust needs Principal, Provider and Agent keys; one is missing")
 )
 
@@ -55,6 +64,11 @@ func (t *Trust) check() error {
 		return errNoResolver
 	}
 	if t == SkipSignatures {
+		// Changing the shared SkipSignatures to demand signatures would be a
+		// policy that quietly did not run, so it fails closed.
+		if t.RequirePrincipalSeal || t.RequireSignedConfirmations {
+			return errSkipWithRequire
+		}
 		return nil
 	}
 	if f, ok := t.Agent.(*sign.JWKSFetcher); ok && f == nil {

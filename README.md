@@ -68,13 +68,16 @@ python scripts/validate.py \
   --agent-keys examples/keys.agent.jwks.json
 ```
 
-Each role has its own key file, and the files must not overlap: whose signature counts as the principal's, the provider's or the agent's is the verifier's choice, never something a document can claim. A seal needs a valid signature from the agent and from a provider; `--require-principal-seal` also needs the principal's. `--skip-signatures` leaves the signature checks out (and is then never a `PASS`). The validator refuses a key used in the wrong role among the keys this record uses, but it does not check the files against each other, so keep them disjoint. See [Keys](SPEC.md#keys).
+Each role has its own key file, and the files must not overlap: whose signature counts as the principal's, the provider's or the agent's is the verifier's choice, never something a document can claim. A seal needs a valid signature from the agent and from a provider; `--require-principal-seal` also needs the principal's, and `--require-signed-confirmations` counts only approvals the principal signed. `--skip-signatures` leaves the signature checks out (and is then never a `PASS`). The validator refuses a key used in the wrong role among the keys this record uses, but it does not check the files against each other, so keep them disjoint. See [Keys](SPEC.md#keys).
 
 Expected output:
 
 ```
 PASS  home-insurance-switch.trace.json: schema ok, 12 events chained to mandate, seal covers final event, signatures valid, confirmation rule met
+  signed: event 9 (human_confirmation): signed by the principal, confirmation_ref sha256:4c1484ff773744c25aed2cb871147bca2cd1a102eef220b440105c651c16080c
 ```
+
+Sam's device signed his yes (event 9), so the report lists it. The `fixed-rate-savings-switch` example leaves its yes unsigned, and the validator then notes that the approval is only the agent's claim. Add `--require-signed-confirmations` to count only approvals the principal signed: the savings example then fails, and this one still passes. See [Signed confirmations](SPEC.md#signed-confirmations).
 
 Try changing any price in the trace file and run it again. The validator will name the event that was tampered with, and report that the signatures no longer verify.
 

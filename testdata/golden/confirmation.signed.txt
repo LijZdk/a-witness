@@ -1,0 +1,1 @@
+event 9 (human_confirmation): signed by the principal, confirmation_ref sha256:4c1484ff773744c25aed2cb871147bca2cd1a102eef220b440105c651c16080c

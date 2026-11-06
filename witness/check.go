@@ -2,6 +2,9 @@ package witness
 
 import (
 	"context"
+	"fmt"
+	"maps"
+	"slices"
 
 	"github.com/LijZdk/a-witness/witness/internal/rules"
 )
@@ -43,6 +46,22 @@ type Report struct {
 	RulesRan bool
 	// Signatures says whether rule 15 was checked and held.
 	Signatures SignatureStatus
+	// SignedConfirmations lists, in event order, each human_confirmation whose
+	// principal signature verified. Set only when the rules ran and the
+	// signatures were valid.
+	SignedConfirmations []SignedConfirmation
+}
+
+// SignedConfirmation is a human_confirmation the principal signed, and its
+// confirmation_ref: the name a relying party can keep to notice a yes that
+// shows up in more than one trace.
+type SignedConfirmation struct {
+	Seq int
+	Ref string
+}
+
+func (s SignedConfirmation) String() string {
+	return fmt.Sprintf("event %d (human_confirmation): signed by the principal, confirmation_ref %s", s.Seq, s.Ref)
 }
 
 // Pass reports whether the record is genuine, signed, and shows the agent
@@ -73,10 +92,13 @@ func (r Report) Pass() bool {
 // by type and would otherwise pass over it.
 //
 // A "yes" in the trace is the agent's claim about the principal. Unless the
-// seal carries a valid signature labelled "principal", made with the key that
-// signed the mandate (a key the Trust names for the principal), the report
-// says so in NotChecked. Trust.RequirePrincipalSeal makes that signature a
-// requirement of rule 15 instead.
+// principal signed it (a human_confirmation with a valid principal_signature,
+// listed in Report.SignedConfirmations) or the seal carries a valid signature
+// labelled "principal", made with the key that signed the mandate (a key the
+// Trust names for the principal), the report says so in NotChecked.
+// Trust.RequirePrincipalSeal makes the seal signature a requirement of rule
+// 15 instead, and Trust.RequireSignedConfirmations makes rule 9 count only
+// approvals the principal signed.
 //
 // An error means a document could not be read, or lacks, or has a wrong type
 // or value for, something the checks need, or t is nil or missing a role. It
@@ -94,7 +116,7 @@ func Check(ctx context.Context, mandateJSON, traceJSON []byte, t *Trust) (Report
 	if err != nil {
 		return rep, err
 	}
-	problems, principalSigned, err := verify(ctx, mandate, traceDoc, t)
+	problems, principalSigned, signed, err := verify(ctx, mandate, traceDoc, t)
 	if err != nil {
 		return rep, err
 	}
@@ -115,11 +137,18 @@ func Check(ctx context.Context, mandateJSON, traceJSON []byte, t *Trust) (Report
 		rep.Signatures = SignaturesValid
 	}
 
-	res, err := rules.Check(mandate, traceDoc, signaturesChecked && principalSigned)
+	res, err := rules.Check(mandate, traceDoc, rules.Signing{
+		SealSigned: signaturesChecked && principalSigned,
+		Signed:     signed,
+		Require:    signaturesChecked && t.RequireSignedConfirmations,
+	})
 	if err != nil {
 		return rep, err
 	}
 	rep.RulesRan = true
+	for _, seq := range slices.Sorted(maps.Keys(signed)) {
+		rep.SignedConfirmations = append(rep.SignedConfirmations, SignedConfirmation{Seq: seq, Ref: signed[seq]})
+	}
 	rep.Rules = problemsFrom(res.Findings)
 	rep.Warnings = problemsFrom(res.Warnings)
 	for _, n := range res.NotChecked {

@@ -124,7 +124,7 @@ func TestConfirmationRule9(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := Check(newMandate("always"), newTrace(c.events...), true)
+			res, err := Check(newMandate("always"), newTrace(c.events...), Signing{SealSigned: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -147,7 +147,7 @@ func TestConfirmationRule9(t *testing.T) {
 func TestConfirmationOtherSettings(t *testing.T) {
 	unconfirmed := newTrace(sel("q1"), act("q1"))
 
-	res, err := Check(newMandate("never"), unconfirmed, true)
+	res, err := Check(newMandate("never"), unconfirmed, Signing{SealSigned: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -158,12 +158,12 @@ func TestConfirmationOtherSettings(t *testing.T) {
 		t.Fatalf(`"never" must give one rule 14 warning: %v`, res.Warnings)
 	}
 
-	res, err = Check(newMandate("always"), newTrace(sel("q1"), confirm("principal", "approved"), act("q1")), true)
+	res, err = Check(newMandate("always"), newTrace(sel("q1"), confirm("principal", "approved"), act("q1")), Signing{SealSigned: true})
 	if err != nil || len(res.Warnings) != 0 {
 		t.Fatalf(`"always" must not warn: %v %v`, res.Warnings, err)
 	}
 
-	res, err = Check(newMandate("above_limits"), unconfirmed, true)
+	res, err = Check(newMandate("above_limits"), unconfirmed, Signing{SealSigned: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -174,7 +174,7 @@ func TestConfirmationOtherSettings(t *testing.T) {
 		t.Fatalf("above_limits must be listed as not checked: %v", res.NotChecked)
 	}
 
-	if _, err = Check(newMandate("sometimes"), unconfirmed, true); err == nil {
+	if _, err = Check(newMandate("sometimes"), unconfirmed, Signing{SealSigned: true}); err == nil {
 		t.Fatal(`human_confirmation "sometimes" must be an error, not a skip`)
 	}
 }
@@ -187,14 +187,14 @@ func hasNote(res Result, rule int, fragment string) bool {
 
 func TestPrincipalApprovalIsTheAgentsClaimUnlessSigned(t *testing.T) {
 	tr := newTrace(sel("q1"), confirm("principal", "approved"), act("q1"))
-	signed, err := Check(newMandate("always"), tr, true)
+	signed, err := Check(newMandate("always"), tr, Signing{SealSigned: true})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if hasNote(signed, 9, "did not sign the seal") {
 		t.Fatal("a principal-signed seal still reports the approvals as unsigned")
 	}
-	unsigned, err := Check(newMandate("always"), tr, false)
+	unsigned, err := Check(newMandate("always"), tr, Signing{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -202,7 +202,7 @@ func TestPrincipalApprovalIsTheAgentsClaimUnlessSigned(t *testing.T) {
 		t.Fatalf("an unsigned approval must be noted, not failed: %v %v", unsigned.Findings, unsigned.NotChecked)
 	}
 	// With a rule 9 finding there is nothing to qualify: the rule already failed.
-	broken, err := Check(newMandate("always"), newTrace(sel("q1"), act("q1")), false)
+	broken, err := Check(newMandate("always"), newTrace(sel("q1"), act("q1")), Signing{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestScopeRule10(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := Check(c.mandate, c.trace, true)
+			res, err := Check(c.mandate, c.trace, Signing{SealSigned: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -258,7 +258,7 @@ func TestScopeRule10(t *testing.T) {
 
 	t.Run("provider lists are noted as not covered", func(t *testing.T) {
 		for _, key := range []string{"provider_allowlist", "provider_blocklist"} {
-			res, err := Check(with(func(s map[string]any) { s[key] = strs("prov_oldco") }), newTrace(), true)
+			res, err := Check(with(func(s map[string]any) { s[key] = strs("prov_oldco") }), newTrace(), Signing{SealSigned: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -266,17 +266,17 @@ func TestScopeRule10(t *testing.T) {
 				t.Fatalf("%s: not noted: %v", key, res.NotChecked)
 			}
 		}
-		res, err := Check(newMandate("never"), newTrace(), true)
+		res, err := Check(newMandate("never"), newTrace(), Signing{SealSigned: true})
 		if err != nil || hasNote(res, 0, "provider") {
 			t.Fatalf("no provider list, yet a note: %v %v", res.NotChecked, err)
 		}
 	})
 
 	t.Run("a scope that is not lists is an error", func(t *testing.T) {
-		if _, err := Check(with(func(s map[string]any) { s["allowed_actions"] = "switch" }), newTrace(), true); err == nil {
+		if _, err := Check(with(func(s map[string]any) { s["allowed_actions"] = "switch" }), newTrace(), Signing{SealSigned: true}); err == nil {
 			t.Fatal("allowed_actions as a string must be an error")
 		}
-		if _, err := Check(with(func(s map[string]any) { delete(s, "product_classes") }), newTrace(), true); err == nil {
+		if _, err := Check(with(func(s map[string]any) { delete(s, "product_classes") }), newTrace(), Signing{SealSigned: true}); err == nil {
 			t.Fatal("missing product_classes must be an error")
 		}
 	})
@@ -300,7 +300,7 @@ func TestWindowRule11(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			res, err := Check(newMandate("never"), newTrace(at("2026-10-02T08:00:00Z"), at(c.at)), true)
+			res, err := Check(newMandate("never"), newTrace(at("2026-10-02T08:00:00Z"), at(c.at)), Signing{SealSigned: true})
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -314,14 +314,14 @@ func TestWindowRule11(t *testing.T) {
 		tr := newTrace(at("2026-10-02T08:00:00Z"))
 		tr["journey"].(map[string]any)["started_at"] = "2020-01-01T00:00:00Z"
 		tr["seal"] = map[string]any{"sealed_at": "2030-01-01T00:00:00Z"}
-		res, err := Check(newMandate("never"), tr, true)
+		res, err := Check(newMandate("never"), tr, Signing{SealSigned: true})
 		if err != nil || len(res.Findings) != 0 {
 			t.Fatalf("journey and seal times must not be checked: %v %v", res.Findings, err)
 		}
 	})
 
 	t.Run("revocation is noted as not checked", func(t *testing.T) {
-		res, err := Check(newMandate("never"), newTrace(at(noon)), true)
+		res, err := Check(newMandate("never"), newTrace(at(noon)), Signing{SealSigned: true})
 		if err != nil || !hasNote(res, 11, "revocation") {
 			t.Fatalf("%v %v", res.NotChecked, err)
 		}
@@ -337,14 +337,14 @@ func TestWindowRule11(t *testing.T) {
 		} {
 			m := newMandate("never")
 			mutate(m["validity"].(map[string]any))
-			if _, err := Check(m, newTrace(at(noon)), true); err == nil {
+			if _, err := Check(m, newTrace(at(noon)), Signing{SealSigned: true}); err == nil {
 				t.Errorf("%s: no error", name)
 			}
 		}
 	})
 
 	t.Run("an unparsable event time is an error", func(t *testing.T) {
-		if _, err := Check(newMandate("never"), newTrace(at("noon")), true); err == nil {
+		if _, err := Check(newMandate("never"), newTrace(at("noon")), Signing{SealSigned: true}); err == nil {
 			t.Fatal("no error")
 		}
 	})
@@ -352,7 +352,7 @@ func TestWindowRule11(t *testing.T) {
 
 func TestUnreadableRecordIsAnErrorNotASkip(t *testing.T) {
 	good := func() map[string]any { return newTrace(sel("q1"), confirm("principal", "approved"), act("q1")) }
-	if _, err := Check(newMandate("always"), good(), true); err != nil {
+	if _, err := Check(newMandate("always"), good(), Signing{SealSigned: true}); err != nil {
 		t.Fatal(err)
 	}
 	cases := map[string]func(tr map[string]any){
@@ -376,7 +376,7 @@ func TestUnreadableRecordIsAnErrorNotASkip(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			tr := good()
 			mutate(tr)
-			if res, err := Check(newMandate("always"), tr, true); err == nil {
+			if res, err := Check(newMandate("always"), tr, Signing{SealSigned: true}); err == nil {
 				t.Fatalf("no error, and reported %v", res.Findings)
 			}
 		})
@@ -384,13 +384,13 @@ func TestUnreadableRecordIsAnErrorNotASkip(t *testing.T) {
 	// The enum is checked whatever the mandate asks for.
 	tr := good()
 	tr["events"].([]any)[1].(map[string]any)["payload"].(map[string]any)["decision"] = "maybe"
-	if _, err := Check(newMandate("never"), tr, true); err == nil {
+	if _, err := Check(newMandate("never"), tr, Signing{SealSigned: true}); err == nil {
 		t.Fatal(`decision "maybe" went unnoticed under human_confirmation "never"`)
 	}
 }
 
 func TestRules12And13AreNotChecked(t *testing.T) {
-	res, err := Check(newMandate("never"), newTrace(at(noon)), true)
+	res, err := Check(newMandate("never"), newTrace(at(noon)), Signing{SealSigned: true})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -408,7 +408,7 @@ func FuzzCheck(f *testing.F) {
 			ev("human_confirmation", actor, when, map[string]any{"decision": decision}),
 			act(aq),
 		)
-		_, _ = Check(newMandate(conf), tr, true) // must not panic
+		_, _ = Check(newMandate(conf), tr, Signing{SealSigned: true}) // must not panic
 	})
 }
 
@@ -416,12 +416,12 @@ func TestUnknownEventTypeOrActorIsAnError(t *testing.T) {
 	// A purchase renamed so that rule 9 does not see it must not pass.
 	renamed := act("q1")
 	renamed["type"] = "action_executed_v2"
-	if res, err := Check(newMandate("always"), newTrace(sel("q1"), renamed), true); err == nil {
+	if res, err := Check(newMandate("always"), newTrace(sel("q1"), renamed), Signing{SealSigned: true}); err == nil {
 		t.Fatalf("no error, findings %v", res.Findings)
 	}
 	odd := sel("q1")
 	odd["actor"] = "guardian"
-	if _, err := Check(newMandate("always"), newTrace(odd), true); err == nil {
+	if _, err := Check(newMandate("always"), newTrace(odd), Signing{SealSigned: true}); err == nil {
 		t.Fatal("an unknown actor was accepted")
 	}
 }
@@ -455,5 +455,196 @@ func TestEventTypesAndActorsMatchTheSchema(t *testing.T) {
 		if !slices.Equal(a, b) {
 			t.Errorf("event.%s: rules.go has %v, the schema has %v", name, a, b)
 		}
+	}
+}
+
+// signedYes is a human_confirmation the principal signed: for a quote, an amount and, if aer is not
+// empty, a rate.
+func signedYes(quote, amount, currency, aer string) map[string]any {
+	pl := map[string]any{
+		"method": "passkey", "decision": "approved", "quote_id": quote,
+		"amount": map[string]any{"amount": amount, "currency": currency},
+	}
+	if aer != "" {
+		pl["aer"] = aer
+	}
+	return ev("human_confirmation", "principal", noon, pl)
+}
+
+func offer(q, aer string) map[string]any {
+	pl := map[string]any{"quote_id": q}
+	if aer != "" {
+		pl["aer"] = aer
+	}
+	return ev("quote_received", "provider", noon, pl)
+}
+
+func signedAt(seqs ...int) map[int]string {
+	m := map[int]string{}
+	for _, s := range seqs {
+		m[s] = "sha256:ref"
+	}
+	return m
+}
+
+// Rule 9 with the principal's signature on each approval (AW-36). Signed lists the events whose
+// signature verified; Require makes only those count.
+func TestSignedApprovalsRule9(t *testing.T) {
+	unsignedAt2 := "event 2 (action_executed): the agent committed 298.00 GBP on an approval the principal did not sign, but this verifier counts only approvals the principal signed"
+	genericAt := func(seq string) string {
+		return "event " + seq + " (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal, but the mandate requires one every time"
+	}
+	cases := []struct {
+		name    string
+		events  []map[string]any
+		signing Signing
+		want    []string
+	}{
+		{"signed, under the policy", []map[string]any{sel("q1"), signedYes("q1", "298.00", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(1), Require: true}, nil},
+		{"unsigned, under the policy",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), act("q1")}, Signing{Require: true},
+			[]string{unsignedAt2}},
+		{"unsigned, policy off", []map[string]any{sel("q1"), confirm("principal", "approved"), act("q1")}, Signing{}, nil},
+		{"signed for a different amount", []map[string]any{sel("q1"), signedYes("q1", "198.00", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the agent committed 298.00 GBP, but the principal approved 198.00 GBP"}},
+		{"signed for a different currency", []map[string]any{sel("q1"), signedYes("q1", "298.00", "EUR", ""), act("q1")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the agent committed 298.00 GBP, but the principal approved 298.00 EUR"}},
+		{"amounts are compared as strings", []map[string]any{sel("q1"), signedYes("q1", "298.0", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the agent committed 298.00 GBP, but the principal approved 298.0 GBP"}},
+		{"signed for another quote than the one bought", []map[string]any{sel("q1"), signedYes("q2", "298.00", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the agent committed 298.00 GBP on quote 'q1', but the principal approved quote 'q2'"}},
+		{"signed yes for the quote bought, though the agent selected another: the selected quote is not covered",
+			[]map[string]any{sel("q1"), signedYes("q2", "298.00", "GBP", ""), act("q2")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the principal signed approval for quote 'q2', but the agent selected quote 'q1'"}},
+		{"signed yes for another quote, action on the selected one",
+			[]map[string]any{sel("q1"), signedYes("q2", "298.00", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(1)}, []string{"event 2 (action_executed): the agent committed 298.00 GBP on quote 'q1', but the principal approved quote 'q2'"}},
+		{"a later selection of another quote, then the old signed yes order: yes for the earlier quote",
+			[]map[string]any{sel("q2"), sel("q1"), signedYes("q2", "298.00", "GBP", ""), act("q2")},
+			Signing{Signed: signedAt(2)}, []string{"event 3 (action_executed): the principal signed approval for quote 'q2', but the agent selected quote 'q1'"}},
+		{"an unsigned decline clears an ignored yes",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), confirm("principal", "declined"), act("q1")},
+			Signing{Require: true}, []string{genericAt("3")}},
+		{"a signed decline clears an ignored yes",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), confirm("principal", "declined"), act("q1")},
+			Signing{Signed: signedAt(2), Require: true}, []string{genericAt("3")}},
+		{"a modification clears an ignored yes",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), confirm("principal", "modified"), act("q1")},
+			Signing{Require: true}, []string{genericAt("3")}},
+		{"AER differs", []map[string]any{offer("q1", "4.40"), sel("q1"), signedYes("q1", "298.00", "GBP", "4.35"), act("q1")},
+			Signing{Signed: signedAt(2)},
+			[]string{"event 2 (human_confirmation): the principal approved an AER of 4.35 on quote 'q1', but that quote offers 4.40"}},
+		{"AER the quote does not offer", []map[string]any{offer("q1", ""), sel("q1"), signedYes("q1", "298.00", "GBP", "4.35"), act("q1")},
+			Signing{Signed: signedAt(2)},
+			[]string{"event 2 (human_confirmation): the principal approved an AER of 4.35 on quote 'q1', but that quote offers no AER"}},
+		{"AER compared as strings", []map[string]any{offer("q1", "4.4"), sel("q1"), signedYes("q1", "298.00", "GBP", "4.40"), act("q1")},
+			Signing{Signed: signedAt(2)},
+			[]string{"event 2 (human_confirmation): the principal approved an AER of 4.40 on quote 'q1', but that quote offers 4.4"}},
+		{"AER matches", []map[string]any{offer("q1", "4.35"), sel("q1"), signedYes("q1", "298.00", "GBP", "4.35"), act("q1")},
+			Signing{Signed: signedAt(2)}, nil},
+		{"no AER signed, none checked", []map[string]any{offer("q1", "4.35"), sel("q1"), signedYes("q1", "298.00", "GBP", ""), act("q1")},
+			Signing{Signed: signedAt(2)}, nil},
+		{"an unsigned decline cancels a signed yes",
+			[]map[string]any{sel("q1"), signedYes("q1", "298.00", "GBP", ""), confirm("principal", "declined"), act("q1")},
+			Signing{Signed: signedAt(1), Require: true}, []string{genericAt("3")}},
+		{"an unsigned yes after a signed one leaves it standing",
+			[]map[string]any{sel("q1"), signedYes("q1", "298.00", "GBP", ""), confirm("principal", "approved"), act("q1")},
+			Signing{Signed: signedAt(1), Require: true}, nil},
+		{"an unsigned yes after a signed one, policy off, replaces it: no amount to check",
+			[]map[string]any{sel("q1"), signedYes("q1", "198.00", "GBP", ""), confirm("principal", "approved"), act("q1")},
+			Signing{Signed: signedAt(1)}, nil},
+		{"a new selection forgets an ignored yes",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), sel("q1"), act("q1")},
+			Signing{Require: true}, []string{genericAt("3")}},
+		{"an ignored yes is used up by the action",
+			[]map[string]any{sel("q1"), confirm("principal", "approved"), act("q1"), act("q1")},
+			Signing{Require: true},
+			[]string{unsignedAt2, genericAt("3")}},
+		{"a signed yes before any selection is not counted",
+			[]map[string]any{signedYes("q1", "298.00", "GBP", ""), sel("q1"), act("q1")},
+			Signing{Signed: signedAt(0), Require: true}, []string{genericAt("2")}},
+		{"a signed yes is used up by one action",
+			[]map[string]any{sel("q1"), signedYes("q1", "298.00", "GBP", ""), act("q1"), act("q1")},
+			Signing{Signed: signedAt(1), Require: true}, []string{genericAt("3")}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := Check(newMandate("always"), newTrace(c.events...), c.signing)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var got []string
+			for _, f := range res.Findings {
+				if f.Rule == 9 {
+					got = append(got, f.Message)
+				}
+			}
+			if !slices.Equal(got, c.want) {
+				t.Fatalf("got  %q\nwant %q", got, c.want)
+			}
+		})
+	}
+}
+
+func TestAgentsClaimNote(t *testing.T) {
+	const claim = "the principal did not sign the seal"
+	yes, unsigned := signedYes("q1", "298.00", "GBP", ""), confirm("principal", "approved")
+	cases := []struct {
+		name    string
+		events  []map[string]any
+		signing Signing
+		note    bool
+	}{
+		{"every approval signed", []map[string]any{sel("q1"), yes, act("q1")}, Signing{Signed: signedAt(1)}, false},
+		{"an approval unsigned", []map[string]any{sel("q1"), unsigned, act("q1")}, Signing{}, true},
+		{"one signed and one not", []map[string]any{sel("q1"), yes, act("q1"), sel("q2"), unsigned, act("q2")}, Signing{Signed: signedAt(1)}, true},
+		{"no approvals at all", []map[string]any{sel("q1")}, Signing{}, true},
+		{"the seal is signed", []map[string]any{sel("q1"), unsigned, act("q1")}, Signing{SealSigned: true}, false},
+		{"the policy is on, one approval unsigned and ignored: no claim to note, the unsigned one counts for nothing",
+			[]map[string]any{sel("q1"), yes, unsigned, act("q1")}, Signing{Require: true, Signed: signedAt(1)}, false},
+		{"the policy is on: unsigned approvals are refused instead", []map[string]any{sel("q1"), yes, act("q1")}, Signing{Require: true, Signed: signedAt(1)}, false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			res, err := Check(newMandate("always"), newTrace(c.events...), c.signing)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if got := hasNote(res, 9, claim); got != c.note {
+				t.Fatalf("note = %v, want %v: %v", got, c.note, res.NotChecked)
+			}
+		})
+	}
+}
+
+func TestPolicyNotAppliedNote(t *testing.T) {
+	const policy = "the policy that only principal-signed approvals count was not applied, because human_confirmation is '"
+	for _, setting := range []string{"never", "above_limits"} {
+		on, err := Check(newMandate(setting), newTrace(sel("q1"), act("q1")), Signing{Require: true})
+		if err != nil || !hasNote(on, 9, policy+setting+"'") {
+			t.Errorf("%s with the policy: %v %v", setting, on.NotChecked, err)
+		}
+		off, err := Check(newMandate(setting), newTrace(sel("q1"), act("q1")), Signing{})
+		if err != nil || hasNote(off, 9, policy) {
+			t.Errorf("%s without the policy: %v %v", setting, off.NotChecked, err)
+		}
+	}
+	// Under "always" the policy is applied, so it is not said to be skipped.
+	res, err := Check(newMandate("always"), newTrace(sel("q1"), act("q1")), Signing{Require: true})
+	if err != nil || hasNote(res, 9, policy) {
+		t.Errorf("always: %v %v", res.NotChecked, err)
+	}
+	// Document strings are escaped.
+	if got := policyNotApplied("a\nb").Reason; strings.Contains(got, "\n") {
+		t.Errorf("not escaped: %q", got)
+	}
+}
+
+func TestSignedApprovalWithWrongTypesIsAnError(t *testing.T) {
+	bad := signedYes("q1", "298.00", "GBP", "")
+	bad["payload"].(map[string]any)["amount"] = "298.00"
+	if _, err := Check(newMandate("always"), newTrace(sel("q1"), bad, act("q1")), Signing{Signed: signedAt(1)}); err == nil {
+		t.Fatal("a signed approval whose amount is not money was accepted")
 	}
 }

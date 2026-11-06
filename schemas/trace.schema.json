@@ -284,7 +284,11 @@
       "properties": {
         "method": { "enum": ["in_app_tap", "passkey", "voice", "message_reply"] },
         "decision": { "enum": ["approved", "declined", "modified"] },
-        "shown_summary_hash": { "$ref": "#/$defs/hash", "description": "Hash of the exact confirmation screen or message the principal saw." }
+        "shown_summary_hash": { "$ref": "#/$defs/hash", "description": "Hash of the exact confirmation screen or message the principal saw. Required when the confirmation is signed." },
+        "quote_id": { "type": "string", "description": "The quote the principal approved, as issued by the provider. Required when the confirmation is signed." },
+        "amount": { "$ref": "mandate.schema.json#/$defs/money", "description": "What the action commits, as shown to the principal. Required when the confirmation is signed." },
+        "aer": { "$ref": "mandate.schema.json#/$defs/percent", "description": "Optional. The annual equivalent rate shown to the principal and signed." },
+        "principal_signature": { "$ref": "mandate.schema.json#/$defs/signature", "description": "Optional. The principal's detached JWS (typ a-witness-confirmation), made with the key that signed the mandate, over the confirmation payload. See SPEC.md, Signed confirmations." }
       }
     },
     "p_executed": {

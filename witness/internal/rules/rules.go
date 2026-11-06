@@ -64,11 +64,22 @@ var (
 
 var binding = []string{"purchase", "renew", "switch", "cancel", "amend"}
 
+// Signing says what the signature checks (rule 15) established, for rule 9.
+type Signing struct {
+	// SealSigned: a valid seal signature from the principal was checked.
+	SealSigned bool
+	// Signed maps the seq of each human_confirmation whose principal signature
+	// verified to its confirmation_ref. Nil when signatures were not checked.
+	Signed map[int]string
+	// Require: only approvals the principal signed count (rule 9).
+	Require bool
+}
+
 // Check applies the mandate rules to a mandate and a trace.
 //
-// principalSigned says whether a valid seal signature from the principal was
-// checked. Without one, the principal's approvals are only the agent's word.
-func Check(mandate, trace map[string]any, principalSigned bool) (Result, error) {
+// Without a valid principal signature (on the seal, or on each approval), the
+// principal's approvals are only the agent's word.
+func Check(mandate, trace map[string]any, signing Signing) (Result, error) {
 	var res Result
 	confirmation, err := get[string](mandate, "human_confirmation", "mandate")
 	if err != nil {
@@ -93,7 +104,7 @@ func Check(mandate, trace map[string]any, principalSigned bool) (Result, error) 
 	res.Findings = append(res.Findings, scopeFindings...)
 	res.NotChecked = append(res.NotChecked, scopeNotes...)
 
-	confFindings, confNotes, err := checkConfirmation(confirmation, events, principalSigned)
+	confFindings, confNotes, err := checkConfirmation(confirmation, events, signing)
 	if err != nil {
 		return res, err
 	}
@@ -180,41 +191,110 @@ func readEvents(trace map[string]any) ([]event, error) {
 
 // Rule 9. Only for human_confirmation "always": every action_executed needs
 // its own approval, from the principal, given after the latest selection and
-// for the quote that was selected.
-func checkConfirmation(setting string, events []event, principalSigned bool) ([]Finding, []NotChecked, error) {
+// for the quote that was selected. An approval the principal signed (Signing.Signed)
+// is for the quote, amount and AER it signed; when Signing.Require is set, only
+// those count.
+func checkConfirmation(setting string, events []event, signing Signing) ([]Finding, []NotChecked, error) {
+	var notes []NotChecked
 	switch setting {
 	case "above_limits":
-		return nil, []NotChecked{{9, "above_limits needs limit checks (rule 12), not implemented yet"}}, nil
+		notes = append(notes, NotChecked{9, "above_limits needs limit checks (rule 12), not implemented yet"})
+		if signing.Require {
+			notes = append(notes, policyNotApplied(setting))
+		}
+		return nil, notes, nil
 	case "always":
 	default:
-		return nil, nil, nil
+		if signing.Require && setting == "never" {
+			notes = append(notes, policyNotApplied(setting))
+		}
+		return nil, notes, nil
 	}
 
 	var findings []Finding
 	var selected string // quote_id of the latest selection_made
 	hasSelection := false
 	pending := false // an approval is waiting to be used by an action
+	ignored := false // an unsigned approval was set aside, because only signed ones count
 	approvedQuote := ""
+	approvedSigned := false
+	approvedAmount, approvedCurrency := "", "" // of a signed approval
+	offered := map[string]string{}             // quote_id to the AER the quote offered, if it offered one
+	principalApprovals, signedApprovals := 0, 0
 	for _, ev := range events {
 		where := fmt.Sprintf("trace.events[%d].payload", ev.seq)
 		switch ev.typ {
+		case "quote_received":
+			id, err := get[string](ev.payload, "quote_id", where)
+			if err != nil {
+				return nil, nil, err
+			}
+			if _, ok := ev.payload["aer"]; ok {
+				if offered[id], err = get[string](ev.payload, "aer", where); err != nil {
+					return nil, nil, err
+				}
+			}
 		case "selection_made":
 			id, err := get[string](ev.payload, "quote_id", where)
 			if err != nil {
 				return nil, nil, err
 			}
 			selected, hasSelection = id, true
-			pending = false // a yes to one choice is not a yes to another
+			pending, ignored = false, false // a yes to one choice is not a yes to another
 		case "human_confirmation":
 			switch ev.decision {
 			case "approved":
+				_, isSigned := signing.Signed[ev.seq]
+				if ev.actor == "principal" {
+					principalApprovals++
+					if isSigned {
+						signedApprovals++
+					}
+				}
 				// The agent's yes is not the principal's, and a yes before
 				// any choice was made is not a yes to a choice.
-				if ev.actor == "principal" && hasSelection {
-					pending, approvedQuote = true, selected
+				if ev.actor != "principal" || !hasSelection {
+					break
+				}
+				switch {
+				case isSigned:
+					quote, err := get[string](ev.payload, "quote_id", where)
+					if err != nil {
+						return nil, nil, err
+					}
+					amount, err := get[map[string]any](ev.payload, "amount", where)
+					if err != nil {
+						return nil, nil, err
+					}
+					if approvedAmount, err = get[string](amount, "amount", where+".amount"); err != nil {
+						return nil, nil, err
+					}
+					if approvedCurrency, err = get[string](amount, "currency", where+".amount"); err != nil {
+						return nil, nil, err
+					}
+					pending, approvedQuote, approvedSigned = true, quote, true
+					if _, ok := ev.payload["aer"]; ok {
+						aer, err := get[string](ev.payload, "aer", where)
+						if err != nil {
+							return nil, nil, err
+						}
+						if offer, has := offered[quote]; !has || offer != aer {
+							shown := "no AER"
+							if has {
+								shown = text.Esc(offer)
+							}
+							findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
+								"event %d (human_confirmation): the principal approved an AER of %s on quote '%s', but that quote offers %s",
+								ev.seq, text.Esc(aer), text.Esc(quote), shown)})
+						}
+					}
+				case signing.Require:
+					ignored = true // pending is left as it was
+				default:
+					pending, approvedQuote, approvedSigned = true, selected, false
 				}
 			case "declined", "modified":
-				pending = false
+				pending, ignored = false, false
 			}
 		case "action_executed":
 			quote, err := get[string](ev.payload, "quote_id", where)
@@ -234,6 +314,10 @@ func checkConfirmation(setting string, events []event, principalSigned bool) ([]
 				return nil, nil, err
 			}
 			switch {
+			case !pending && ignored:
+				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
+					"event %d (action_executed): the agent committed %s %s on an approval the principal did not sign, but this verifier counts only approvals the principal signed",
+					ev.seq, text.Esc(value), text.Esc(currency))})
 			case !pending:
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
 					"event %d (action_executed): the agent committed %s %s without an approved human_confirmation from the principal, but the mandate requires one every time",
@@ -242,16 +326,32 @@ func checkConfirmation(setting string, events []event, principalSigned bool) ([]
 				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
 					"event %d (action_executed): the agent committed %s %s on quote '%s', but the principal approved quote '%s'",
 					ev.seq, text.Esc(value), text.Esc(currency), text.Esc(quote), text.Esc(approvedQuote))})
+			case approvedQuote != selected:
+				// A signed yes for a quote other than the latest selection does not cover the selected one.
+				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
+					"event %d (action_executed): the principal signed approval for quote '%s', but the agent selected quote '%s'",
+					ev.seq, text.Esc(approvedQuote), text.Esc(selected))})
 			}
-			pending = false // each approval is used up by one action
+			if pending && approvedSigned && (value != approvedAmount || currency != approvedCurrency) {
+				findings = append(findings, Finding{9, ev.seq, fmt.Sprintf(
+					"event %d (action_executed): the agent committed %s %s, but the principal approved %s %s",
+					ev.seq, text.Esc(value), text.Esc(currency), text.Esc(approvedAmount), text.Esc(approvedCurrency))})
+			}
+			pending, ignored, approvedSigned = false, false, false // each approval is used up by one action
 		}
 	}
 
-	var notes []NotChecked
-	if len(findings) == 0 && !principalSigned {
+	// A yes is the agent's claim unless the principal vouched for it: by signing
+	// the seal, or by signing every approval it gave.
+	allSigned := principalApprovals > 0 && signedApprovals == principalApprovals
+	if len(findings) == 0 && !signing.SealSigned && !signing.Require && !allSigned {
 		notes = append(notes, NotChecked{9, "the principal's approvals are recorded by the agent; the principal did not sign the seal"})
 	}
 	return findings, notes, nil
+}
+
+func policyNotApplied(setting string) NotChecked {
+	return NotChecked{9, fmt.Sprintf("the policy that only principal-signed approvals count was not applied, because human_confirmation is '%s'", text.Esc(setting))}
 }
 
 // Rule 10. The journey is within the mandate's scope. Extension: a mandate
