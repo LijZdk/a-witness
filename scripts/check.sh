@@ -828,8 +828,10 @@ expect_report "R1 stops R3 and R4: a wrong key and a wrong actor give the actor 
 expect_report "R2 stops R3 and R4: a wrong key and a missing summary give the summary line alone" \
   "FAIL  conf-missing-wrongkey.json: $BROKEN
   - $(cat testdata/golden/rule15.confirm-needs-summary.txt)" "$M" "$TMP/conf-missing-wrongkey.json" "${KEYS[@]}"
-expect_fail "a mismatch with the signed yes is a mandate breach, not a broken record" \
-  "the record is intact, but the agent broke its mandate" "$M" "$TMP/conf-amount-mismatch.json" "${KEYS[@]}"
+expect_report "a mismatch with the signed yes reports its verified confirmation reference" \
+  "FAIL  conf-amount-mismatch.json: the record is intact, but the agent broke its mandate
+  - $(cat testdata/golden/rule9.amount-mismatch.txt)
+  signed: $(cat testdata/golden/confirmation.signed.txt)" "$M" "$TMP/conf-amount-mismatch.json" "${KEYS[@]}"
 expect_line "an unsigned decline still cancels a signed yes" \
   "event 11 (action_executed): the agent committed 298.00 GBP without an approved human_confirmation from the principal, but the mandate requires one every time" \
   "$M" "$TMP/conf-unsigned-decline.json" "${KEYS[@]}" "${POLICY[@]}"

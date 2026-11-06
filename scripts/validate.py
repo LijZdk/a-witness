@@ -374,6 +374,11 @@ def print_notes(notes):
         print("  note:", esc(n))
 
 
+def print_signed_confirmations(signed):
+    for seq, ref in signed.items():
+        print(f"  signed: event {seq} (human_confirmation): signed by the principal, confirmation_ref {ref}")
+
+
 def _must_escape(o):
     return (o < 0x20 or 0x7F <= o <= 0x9F or o in (0x2028, 0x2029, 0x200E, 0x200F)
             or 0x202A <= o <= 0x202E or 0x2066 <= o <= 0x2069 or 0xD800 <= o <= 0xDFFF)
@@ -613,7 +618,9 @@ def run(argv):
 
     problems, notes = confirmation_problems(mandate, trace, signed, args.require_signed_confirmations, principal_signed)
     if problems:
-        return fail(problems, f"{name}: the record is intact, but the agent broke its mandate")
+        status = fail(problems, f"{name}: the record is intact, but the agent broke its mandate")
+        print_signed_confirmations(signed)
+        return status
 
     setting = mandate["human_confirmation"]
     confirmation = "confirmation rule met" if setting == "always" else f"confirmation rule not checked for '{setting}' yet"
@@ -624,8 +631,7 @@ def run(argv):
         print_notes(notes)
         return status
     print(f"PASS  {esc(name)}: {summary}")
-    for seq, ref in signed.items():
-        print(f"  signed: event {seq} (human_confirmation): signed by the principal, confirmation_ref {ref}")
+    print_signed_confirmations(signed)
     print_notes(notes)
     return 0
 
